@@ -406,10 +406,12 @@ class ExecSpace(object):  # think of a bubble over the bundle
   def get_session(self):
     """ Create a session session """
     os.system(
-        'sshpass -p {password} ssh {username}@{host}'.format(
+        'sshpass -p {password} ssh -t {username}@{host} \
+            "cd {remote_dir}; exec \\$SHELL --login"'.format(
           username=self.login.username,
           password=self.login.password,
-          host=self.login.host
+          host=self.login.host,
+          remote_dir=self.remote_dir
           )
         )
 
@@ -427,7 +429,8 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     # NOTE : figure out a way to kill the notebook as well
     self.async_remote_exec(cmd_str, logfile='/dev/null')
-    logger.info('\tStarted notebook server in remote machine :{}'.format(server_port_num))
+    logger.info('\tStarted notebook server in remote machine :{}'.format(
+      server_port_num))
 
     # . choose a client port number
     # .. build notebook client command

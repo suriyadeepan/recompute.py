@@ -35,6 +35,9 @@ parser.add_argument('--no-force', dest='force', action='store_false')
 parser.add_argument('--run_async', default=False, action='store_true',
     help='Execute commands async')
 parser.add_argument('--no-run_async', dest='run_async', action='store_false')
+parser.add_argument('--rsync', default=True, action='store_true',
+    help='Update files in remote machine')
+parser.add_argument('--no-rsync', dest='rsync', action='store_false')
 args = parser.parse_args()
 
 
@@ -129,10 +132,11 @@ def main():  # package entry point
   elif args.mode == 'sync':
     """ Mode : Sync Execute command in remote machine """
     assert args.cmd  # user inputs command to exec in remote
-
     # create void from cache
     void = create_void()
-
+    # look for python execution
+    if 'python' in args.cmd and args.rsync:  # TODO : this is pretty hacky;
+      void.sync(update=args.force)           # you are better than this!
     # blocking execute `cmd` in remote
     void.log_remote_exec(args.cmd)
 
@@ -140,8 +144,13 @@ def main():  # package entry point
   elif args.mode == 'async':
     """ Mode : Async Execute command in remote machine """
     assert args.cmd
-    # create void from cache
-    create_void().log_async_remote_exec(args.cmd)
+    # get void
+    void = create_void()
+    # look for python execution
+    if 'python' in args.cmd and args.rsync:
+      void.sync(update=args.force)
+    # async execute `cmd` in remote
+    void.log_async_remote_exec(args.cmd)
 
   # ------------ rsync ----------- #
   elif args.mode == 'rsync':
@@ -161,7 +170,7 @@ def main():  # package entry point
     if args.loop:  # --------- loop ----------- #
       """ Mode : Copy log from remote machine in a loop """
       create_void().loop_get_remote_log(int(args.loop), args.filter)
-    else:  # ------------------------- no loop ---------- #
+    else:  # --------------- no loop ---------- #
       create_void().get_remote_log(args.filter, print_log=True)
 
   # ------------ ssh ------------- #
