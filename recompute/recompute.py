@@ -173,7 +173,8 @@ def main():  # package entry point
     void = create_void()
     # delete local log
     # NOTE : i'm not sure if i should do this!
-    os.remove(void.local_logfile)
+    if os.path.exists(void.local_logfile):  # if it exists
+      os.remove(void.local_logfile)
     if args.loop:  # --------- loop ----------- #
       """ Mode : Copy log from remote machine in a loop """
       void.loop_get_remote_log(int(args.loop), args.filter)
