@@ -8,6 +8,19 @@ JUPYTER_CLIENT = 'sshpass -p {password} \
     {username}@{host}'
 PROCESS_LIST_LINUX = 'ps -aux | grep {}'
 KILL_PROCESS = 'kill -9 {}'
+SSH_HEADER = 'sshpass -p {password}'
+SCP_FROM_REMOTE = 'scp -r {username}@{host}:{remotepath} {localpath}'
+SCP_TO_REMOTE = 'scp -r {localpath} {username}@{host}:{remotepath}'
+RSYNC = 'rsync -a --files-from={deps_file} . \
+        {username}@{host}:{remote_dir}'
+SSH_EXEC = 'ssh {username}@{host} {cmd}'
+__SSH_INTO_REMOTE_DIR = 'ssh -t {username}@{host} \
+            "cd {remote_dir}; exec \\$SHELL --login"'
+SSH_INTO_REMOTE_DIR = SSH_HEADER + ' ' + __SSH_INTO_REMOTE_DIR
+SSH_MAKE_DIR = 'ssh {username}@{host} mkdir -p {remote_dir}'
+CMD_LOG_FOOTER = ' > {logfile} 2>{logfile} &'
 
-# wget multiple urls
-def _WGET(urls): return 'wget -c {}'.format(' '.join(urls))
+
+def make_wget(urls):
+  """ `wget` from multiple urls """
+  return 'wget -c {}'.format(' '.join(urls))

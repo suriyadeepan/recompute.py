@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def local_exec(cmd, timeout=10):
-  process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+def local_exec(cmdstr, timeout=10):
+  process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE)
   timer = Timer(timeout, process.kill)
   try:
     timer.start()
@@ -28,13 +28,13 @@ def local_exec(cmd, timeout=10):
     timer.cancel()
 
 
-def local_async_exec(cmd, logfile='/dev/null'):
+def local_async_exec(cmdstr, logfile='/dev/null'):
   # cmd footer
-  _cmd_footer = '> {logfile} 2>{logfile} &'
+  _cmd_footer = cmd.CMD_LOG_FOOTER.format(logfile)
   # update command
-  cmd = ' '.join([cmd, _cmd_footer])
+  cmdstr = ' '.join([cmdstr, _cmd_footer])
   # create process
-  process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, shell=True)
+  process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE, shell=True)
   try:
     output, error = process.communicate()
     logger.info(str(output))
@@ -44,12 +44,11 @@ def local_async_exec(cmd, logfile='/dev/null'):
     logger.error('\tExecution Failed!')
 
 
-def remote_exec(cmd, login):
-  _header = 'sshpass -p {password}'.format(password=login.password)
-  _body = 'ssh {username}@{host} {cmd}'.format(
+def remote_exec(cmdstr, login):
+  _header = cmd.SSH_HEADER.format(password=login.password)
+  _body = cmd.SSH_EXEC.format(
       username=login.username,
-      host=login.host,
-      cmd=cmd
+      host=login.host, cmd=cmdstr
       )
   return local_exec(' '.join([_header, _body]))
 
@@ -185,23 +184,25 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     return client
 
+  def get_client(self):
+    return self.client if self.client else self.init_client()
+
   def make_mkcmd(self, dir_=None):
     # resolve directory to make
     dir_ = dir_ if dir_ else self.remote_dir
     # create directory in remote machine
-    _header = 'sshpass -p {password}'.format(password=self.login.password)
-    _body = 'ssh {username}@{host} mkdir -p {remote_dir}'.format(
+    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _body = cmd.SSH_MAKE_DIR.format(
         username=self.login.username,
         host=self.login.host,
         remote_dir=dir_
         )
-
+    # join
     return ' '.join([_header, _body])
 
   def make_rsync_cmd(self):
-    _header = 'sshpass -p {password}'.format(password=self.login.password)
-    _body = 'rsync -a --files-from={deps_file} . \
-        {username}@{host}:{remote_dir}'.format(
+    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _body = cmd.RSYNC.format(
             deps_file=self.bundle.db,
             username=self.login.username,
             host=self.login.host,
@@ -223,11 +224,11 @@ class ExecSpace(object):  # think of a bubble over the bundle
     # execute rsync
     return local_exec(self.make_rsync_cmd())
 
-  def remote_exec(self, cmd):
+  def remote_exec(self, cmdstr):
     """ Execute command in remote machine via `client` """
     # get client
-    client = self.client if self.client else self.init_client()
-    stdin, stdout, stderr = client.exec_command(cmd)
+    client = self.get_client()
+    stdin, stdout, stderr = client.exec_command(cmdstr)
     output = [ line.strip('\n') for line in stdout ]
 
     if len(output) == 1:  # one-liners
@@ -235,7 +236,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     return output if len(output) > 0 else None
 
-  def async_remote_exec(self, cmd, logfile=None, track=True):
+  def async_remote_exec(self, cmdstr, logfile=None, track=True):
     """ Async execute command in remote machine """
 
     # resolve which logfile to write to
@@ -243,19 +244,19 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     # place a tracker
     tracker = random.randint(999999, 9999999) if track else ''
-    cmd_tracked = '{cmd} {tracker}'.format(cmd=cmd, tracker=tracker)
+    cmd_tracked = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
 
     # open a channel
-    client = self.client if self.client else self.init_client()
+    client = self.get_client()
     channel = client.get_transport().open_session()
     # add sync footer
-    async_footer = ' >{logfile} 2>{logfile} &'.format(logfile=logfile)
+    async_footer = cmd.CMD_LOG_FOOTER.format(logfile=logfile)
     # execute command async
     channel.exec_command(cmd_tracked + async_footer)
 
     # keep track of it
-    self.processes.append((tracker, cmd))
-    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmd))
+    self.processes.append((tracker, cmdstr))
+    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmdstr))
 
     # update cache
     self.cache_()
@@ -264,39 +265,35 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
   def copy_file_to_remote(self, localpath, remotepath=None):
     """ Copy file to remote machine """
-
     # default remote path
     remotepath = remotepath if remotepath else self.remote_data
-
     # build copy cmd
-    _header = 'sshpass -p {password}'.format(password=self.login.password)
-    _body = 'scp -r {localpath} {username}@{host}:{remotepath}'.format(
+    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _body = cmd.SCP.format(
         username=self.login.username,
         host=self.login.host,
         remotepath=remotepath,
         localpath=localpath
         )
     copy_cmd = ' '.join([_header, _body])
-
-    return local_exec(copy_cmd)
+    # local execute scp
+    local_exec(copy_cmd)
 
   def get_file_from_remote(self, remotepath, localpath=None):
     """ Copy file to local machine """
-
     # default local path
     localpath = localpath if localpath else self.bundle.path
-
     # build copy cmd
-    _header = 'sshpass -p {password}'.format(password=self.login.password)
-    _body = 'scp -r {username}@{host}:{remotepath} {localpath}'.format(
+    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _body = cmd.SCP_FROM_REMOTE.format(
         username=self.login.username,
         host=self.login.host,
         remotepath=remotepath,
         localpath=localpath
         )
     copy_cmd = ' '.join([_header, _body])
-
-    return local_exec(copy_cmd)
+    # execute scp command
+    local_exec(copy_cmd)
 
   def log_remote_exec(self, cmd, logfile=None):
     """ Log execution output and copy log to local machine """
@@ -406,10 +403,10 @@ class ExecSpace(object):  # think of a bubble over the bundle
     # build cmd header
     _cmd_header = self._header_cd(change_to)
     # build cmd body
-    _cmd_body = cmd._WGET(urls)
+    _cmd_body = cmd.make_wget(urls)
     # build cmd footer
     data_logfile = os.path.join(change_to, 'data.log')
-    _cmd_footer = ' > {logfile} 2>{logfile}'.format(logfile=data_logfile)
+    _cmd_footer = cmd.CMD_LOG_FOOTER.format(logfile=data_logfile)
     # join
     cmd_str = ' && '.join([ _cmd_header, _cmd_body ])
 
@@ -426,8 +423,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
   def get_session(self):
     """ Create a session session """
     os.system(
-        'sshpass -p {password} ssh -t {username}@{host} \
-            "cd {remote_dir}; exec \\$SHELL --login"'.format(
+        cmd.SSH_INTO_REMOTE_DIR.format(
           username=self.login.username,
           password=self.login.password,
           host=self.login.host,
@@ -473,7 +469,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
   def list_processes(self, print_log=False):
     # get client
-    client = self.client if self.client else self.init_client()
+    client = self.get_client()
     _, stdout, _ = client.exec_command(
         cmd.PROCESS_LIST_LINUX.format('python')
         )
@@ -498,7 +494,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
   def kill(self, idx, force=True):
     # get client
-    client = self.client if self.client else self.init_client()
+    client = self.get_client()
     # get list of active proceses
     processes = self.list_processes() if force else self.processes
     # if idx == 0 -> kill them all!
