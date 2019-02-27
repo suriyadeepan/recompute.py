@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser(description='Add some integers.')
 # NOTE : ffs! write a descriptive help for `mode`
 parser.add_argument('mode', type=str,
-    help='(init/sync/async/rsync/install/log/ssh/notebook/conf/probe/data/pull/push) recompute mode')
+    help='(init/sync/async/rsync/install/log/list/ssh/notebook/conf/probe/data/pull/push) recompute mode')
 parser.add_argument('cmd', nargs='?', default='None',
     help='command to run in remote system')
 parser.add_argument('--remote_home', nargs='?', default='~/projects/',
@@ -29,6 +29,8 @@ parser.add_argument('--filter', nargs='?', default='',
     help='keyword to filter log')
 parser.add_argument('--loop', nargs='?', default='',
     help='number of seconds to wait to fetch log')
+parser.add_argument('--idx', nargs='?', default='',
+    help='process idx to operate on')
 parser.add_argument('--force', default=False, action='store_true',
     help='clear cache')
 parser.add_argument('--no-force', dest='force', action='store_false')
@@ -177,6 +179,21 @@ def main():  # package entry point
       void.loop_get_remote_log(int(args.loop), args.filter)
     else:  # --------------- no loop ---------- #
       void.get_remote_log(args.filter, print_log=True)
+
+  # ------------ list ------------ #
+  elif args.mode == 'list':  # list of proceses
+    """ Mode : List remote processes """
+    create_void().list_processes(print_log=True)
+
+  # ------------ kill ------------ #
+  elif args.mode == 'kill':  # kill process
+    """ Mode : Interactive kill """
+    void = create_void()
+    procs = void.list_processes(print_log=True)
+    idx = int(args.idx) if args.idx else None
+    if not args.idx:
+      idx = int(input('kill idx [0-{}] : '.format(len(procs))))
+    void.kill(idx, force=False)  # kill process
 
   # ------------ ssh ------------- #
   elif args.mode == 'ssh':  # start an ssh session

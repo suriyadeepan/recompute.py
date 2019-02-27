@@ -113,6 +113,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     # cache name
     self.CACHE = '.recompute/void'
+    cache = None
 
     if not login and not bundle:
       # read from cache
@@ -124,11 +125,10 @@ class ExecSpace(object):  # think of a bubble over the bundle
     self.bundle = bundle if bundle else cache['bundle']
 
     # create an SSH Client
-    self.client = self.init_client()
-    assert self.client  # make sure connection is established
+    self.client = None  # self.init_client()
 
     # ~/projects/ folder in remote machine
-    self.remote_home = remote_home if remote_home else '~/espace/'
+    self.remote_home = remote_home if remote_home else '~/projects/'
     # ~/projects/project/ folder in remote machine
     self.remote_dir = os.path.join(self.remote_home, self.bundle.name)
     # ~/projects/project/data/
@@ -146,7 +146,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
         )
 
     # list spawned proceses
-    self.processes = []
+    self.processes = [] if not cache else cache['processes']
 
     # cache void
     self.cache_()
@@ -179,6 +179,9 @@ class ExecSpace(object):  # think of a bubble over the bundle
         self.login.username, self.login.host
         ))
       exit()
+
+    # attach to self
+    self.client = client
 
     return client
 
@@ -222,7 +225,9 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
   def remote_exec(self, cmd):
     """ Execute command in remote machine via `client` """
-    stdin, stdout, stderr = self.client.exec_command(cmd)
+    # get client
+    client = self.client if self.client else self.init_client()
+    stdin, stdout, stderr = client.exec_command(cmd)
     output = [ line.strip('\n') for line in stdout ]
 
     if len(output) == 1:  # one-liners
@@ -230,19 +235,32 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     return output if len(output) > 0 else None
 
-  def async_remote_exec(self, cmd, logfile=None):
+  def async_remote_exec(self, cmd, logfile=None, track=True):
     """ Async execute command in remote machine """
 
     # resolve which logfile to write to
     logfile = logfile if logfile else self.logfile
 
+    # place a tracker
+    tracker = random.randint(999999, 9999999) if track else ''
+    cmd_tracked = '{cmd} {tracker}'.format(cmd=cmd, tracker=tracker)
+
     # open a channel
-    channel = self.client.get_transport().open_session()
+    client = self.client if self.client else self.init_client()
+    channel = client.get_transport().open_session()
     # add sync footer
-    async_footer = ' 2>{} &'.format(logfile)
+    async_footer = ' >{logfile} 2>{logfile} &'.format(logfile=logfile)
     # execute command async
-    channel.exec_command(cmd + async_footer)
-    return True
+    channel.exec_command(cmd_tracked + async_footer)
+
+    # keep track of it
+    self.processes.append((tracker, cmd))
+    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmd))
+
+    # update cache
+    self.cache_()
+
+    return tracker
 
   def copy_file_to_remote(self, localpath, remotepath=None):
     """ Copy file to remote machine """
@@ -313,9 +331,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
     cmd = ' && '.join([ _cmd_seq_header, cmd ])
 
     # execute command
-    self.async_remote_exec('{cmd} > {logfile}'.format(
-      cmd=cmd, logfile=self.logfile)
-      )
+    tracker = self.async_remote_exec(cmd, logfile)
 
   def get_remote_log(self, keyword=None, print_log=True):
     """ Copy log file in remote system to local machine """
@@ -395,14 +411,14 @@ class ExecSpace(object):  # think of a bubble over the bundle
     data_logfile = os.path.join(change_to, 'data.log')
     _cmd_footer = ' > {logfile} 2>{logfile}'.format(logfile=data_logfile)
     # join
-    cmd_str = ' && '.join([ _cmd_header, _cmd_body ]) + _cmd_footer
+    cmd_str = ' && '.join([ _cmd_header, _cmd_body ])
 
     if run_async:  # run (download) async
       self.async_remote_exec(cmd_str, logfile=data_logfile)
       return True
 
     # run (download) sync
-    logger.info(self.remote_exec(cmd_str))
+    logger.info(self.remote_exec(cmd_str + _cmd_footer))
 
     # get log file from remote to local machine
     self.get_file_from_remote(data_logfile, self.bundle.path)
@@ -432,7 +448,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
     cmd_str = ' && '.join([ _cmd_header, _cmd_body ])
 
     # NOTE : figure out a way to kill the notebook as well
-    self.async_remote_exec(cmd_str, logfile='/dev/null')
+    tracker = self.async_remote_exec(cmd_str, logfile='/dev/null')
     logger.info('\tStarted notebook server in remote machine :{}'.format(
       server_port_num))
 
@@ -454,3 +470,51 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     # connect to notebook server
     return local_exec(cmd_local)
+
+  def list_processes(self, print_log=False):
+    # get client
+    client = self.client if self.client else self.init_client()
+    _, stdout, _ = client.exec_command(
+        cmd.PROCESS_LIST_LINUX.format('python')
+        )
+    proc_log = str('\n'.join(stdout.readlines()))
+
+    active_processes = []
+    # [all] option
+    logger.info('[0] * all')
+    i = 1
+    for (tracker, cmd_) in self.processes:
+      if str(tracker) in proc_log:  # search for tracker in process log
+        active_processes.append((tracker, cmd_))
+        logger.info('[{idx}] {tracker} ({cmd})'.format(
+          idx=i, tracker=tracker, cmd=cmd_
+          ))
+        i = i + 1
+
+    # keep track of acive_processes
+    self.processes = active_processes
+
+    return self.processes
+
+  def kill(self, idx, force=True):
+    # get client
+    client = self.client if self.client else self.init_client()
+    # get list of active proceses
+    processes = self.list_processes() if force else self.processes
+    # if idx == 0 -> kill them all!
+    dead_procs = [ processes[idx - 1] ] if idx > 0 else processes
+
+    # iterate through processes to be killed
+    for tracker, cmd_ in dead_procs:
+      # get process id using tracker
+      _, stdout, _ = client.exec_command(
+          cmd.PROCESS_LIST_LINUX.format(tracker)
+          )
+
+      # parse output of `ps` command
+      proc_log = [ line.replace('\n', '') for line in stdout.readlines()
+          if 'grep' not in line ]
+      pids = [ int(line.split(' ')[1]) for line in proc_log ]
+      # kill remote process
+      pid = max(pids)  # choose pid
+      client.exec_command(cmd.KILL_PROCESS.format(pid))

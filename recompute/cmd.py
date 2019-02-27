@@ -6,6 +6,8 @@ JUPYTER_SERVER = 'jupyter notebook --no-browser --port={port_num} --NotebookApp.
 JUPYTER_CLIENT = 'sshpass -p {password} \
     ssh -N -L {client_port_num}:localhost:{server_port_num} \
     {username}@{host}'
+PROCESS_LIST_LINUX = 'ps -aux | grep {}'
+KILL_PROCESS = 'kill -9 {}'
 
 # wget multiple urls
 def _WGET(urls): return 'wget -c {}'.format(' '.join(urls))
