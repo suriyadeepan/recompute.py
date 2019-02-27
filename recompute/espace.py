@@ -34,11 +34,12 @@ def local_async_exec(cmd, logfile='/dev/null'):
   # update command
   cmd = ' '.join([cmd, _cmd_footer])
   # create process
-  process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+  process = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, shell=True)
   try:
     output, error = process.communicate()
     logger.info(str(output))
     logger.info(str(error))
+    return process.pid
   except:
     logger.error('\tExecution Failed!')
 
@@ -133,10 +134,16 @@ class ExecSpace(object):  # think of a bubble over the bundle
     # ~/projects/project/data/
     self.remote_data = os.path.join(self.remote_dir, 'data/')
 
-    # build log file path
+    # build remote log file path
     self.logfile = os.path.join(self.remote_dir,
         '{}.log'.format(self.bundle.name)
       )
+
+    # build local log file path
+    self.local_logfile = os.path.join(
+        self.bundle.path,
+        self.logfile.split('/')[-1]
+        )
 
     # list spawned proceses
     self.processes = []
@@ -208,10 +215,8 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     # execute make directory command from local machine
     assert local_exec(self.make_mkcmd())
-
     # make data/ directory
     assert local_exec(self.make_mkcmd(self.remote_data))
-
     # execute rsync
     return local_exec(self.make_rsync_cmd())
 
@@ -321,14 +326,13 @@ class ExecSpace(object):  # think of a bubble over the bundle
   def get_local_log(self, keyword=None, print_log=False):
     """ Read local log file """
     # check if local log file exists
-    logfile = os.path.join(self.bundle.path, self.logfile.split('/')[-1])
-    if not os.path.exists(logfile):
+    if not os.path.exists(self.local_logfile):
       return ''
 
     # read from log file
     log = open(os.path.join(self.bundle.path, self.logfile.split('/')[-1])).read()
 
-    if keyword:  # if keyword is given
+    if keyword:    # if keyword is given
       log = '\n'.join([ line for line in log.split('\n') if keyword in line])
 
     if print_log:  # do we print it?

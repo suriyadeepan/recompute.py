@@ -167,11 +167,16 @@ def main():  # package entry point
   # ------------ log ------------- #
   elif args.mode == 'log':  # copy log from remote
     """ Mode : Copy log from remote machine """
+    # get void
+    void = create_void()
+    # delete local log
+    # NOTE : i'm not sure if i should do this!
+    os.remove(void.local_logfile)
     if args.loop:  # --------- loop ----------- #
       """ Mode : Copy log from remote machine in a loop """
-      create_void().loop_get_remote_log(int(args.loop), args.filter)
+      void.loop_get_remote_log(int(args.loop), args.filter)
     else:  # --------------- no loop ---------- #
-      create_void().get_remote_log(args.filter, print_log=True)
+      void.get_remote_log(args.filter, print_log=True)
 
   # ------------ ssh ------------- #
   elif args.mode == 'ssh':  # start an ssh session
