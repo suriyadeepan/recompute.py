@@ -19,6 +19,7 @@ __SSH_INTO_REMOTE_DIR = 'ssh -t {username}@{host} \
 SSH_INTO_REMOTE_DIR = SSH_HEADER + ' ' + __SSH_INTO_REMOTE_DIR
 SSH_MAKE_DIR = 'ssh {username}@{host} mkdir -p {remote_dir}'
 CMD_LOG_FOOTER = ' > {logfile} 2>{logfile} &'
+LAST_MODIFIED = 'date -r {filename}'
 
 
 def make_wget(urls):

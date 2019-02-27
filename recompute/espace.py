@@ -295,6 +295,15 @@ class ExecSpace(object):  # think of a bubble over the bundle
     # execute scp command
     local_exec(copy_cmd)
 
+    # get last modified date
+    _, stdout, _ = self.get_client().exec_command(
+        cmd.LAST_MODIFIED.format(filename=remotepath)
+        )
+    # read from stdout
+    last_modified = str('\n'.join(stdout.readlines())).replace('\n', '')
+    logger.info('\n\tLast Modification time : {}\n'.format(last_modified))
+    return last_modified
+
   def log_remote_exec(self, cmd, logfile=None):
     """ Log execution output and copy log to local machine """
 
@@ -311,11 +320,12 @@ class ExecSpace(object):  # think of a bubble over the bundle
       )
 
     # copy to local
-    self.get_file_from_remote(logfile, self.bundle.path)  # '.'
-
+    last_modified = self.get_file_from_remote(logfile, self.bundle.path)  # '.'
     logger.info('\n\n{}'.format(
       open(os.path.join(self.bundle.path, logfile.split('/')[-1])).read()
       ))
+    # return last modified date
+    return last_modified
 
   def log_async_remote_exec(self, cmd, logfile=None):
     """ Log execution output and copy log to local machine """
@@ -333,7 +343,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
   def get_remote_log(self, keyword=None, print_log=True):
     """ Copy log file in remote system to local machine """
     # copy to local
-    self.get_file_from_remote(self.logfile, self.bundle.path)  # '.'
+    last_modified = self.get_file_from_remote(self.logfile, self.bundle.path)  # '.'
     return self.get_local_log(keyword, print_log)
 
   def get_local_log(self, keyword=None, print_log=False):
@@ -418,7 +428,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
     logger.info(self.remote_exec(cmd_str + _cmd_footer))
 
     # get log file from remote to local machine
-    self.get_file_from_remote(data_logfile, self.bundle.path)
+    last_modified = self.get_file_from_remote(data_logfile, self.bundle.path)
 
   def get_session(self):
     """ Create a session session """
