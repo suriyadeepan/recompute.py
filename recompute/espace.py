@@ -6,7 +6,6 @@ import time
 import os
 
 import logging
-from threading import Timer
 
 from recompute import cmd
 
@@ -17,31 +16,30 @@ logger = logging.getLogger(__name__)
 
 def local_exec(cmdstr, timeout=10):
   process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE)
-  timer = Timer(timeout, process.kill)
+  logger.info(cmdstr)
   try:
-    timer.start()
     output, error = process.communicate()
     return output if output else True
   except:
     logger.error('\tExecution Failed!')
-  finally:
-    timer.cancel()
 
 
-def local_async_exec(cmdstr, logfile='/dev/null'):
+def local_async_exec(cmdstr, logfile='/dev/null', track=True):
+  # add tracker
+  tracker = rand_tracker(label='local') if track else ''
+  cmdstr = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
   # cmd footer
-  _cmd_footer = cmd.CMD_LOG_FOOTER.format(logfile)
+  _cmd_footer = cmd.CMD_LOG_FOOTER_ASYNC.format(logfile)
   # update command
-  cmdstr = ' '.join([cmdstr, _cmd_footer])
+  cmdstr = ' '.join([cmdstr, ' ', _cmd_footer])
   # create process
   process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE, shell=True)
   try:
     output, error = process.communicate()
-    logger.info(str(output))
-    logger.info(str(error))
-    return process.pid
-  except:
-    logger.error('\tExecution Failed!')
+    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmdstr))
+    return tracker
+  except KeyboardInterrupt:
+    logger.error('\tYou interrupted!')
 
 
 def remote_exec(cmdstr, login):
@@ -51,6 +49,26 @@ def remote_exec(cmdstr, login):
       host=login.host, cmd=cmdstr
       )
   return local_exec(' '.join([_header, _body]))
+
+
+def rand_server_port(a=8824, b=8850):
+  return random.randint(a, b)
+
+
+def rand_client_port(a=8850, b=8890):
+  return random.randint(a, b)
+
+
+def rand_tracker(a=999999, b=9999999, label='remote'):
+    return '{label}_{idx}'.format(label=label, idx=random.randint(a, b))
+
+
+def rand_token(n=12):
+  import string
+  return ''.join(
+      random.choice(string.ascii_lowercase + string.digits)
+      for _ in range(n)
+      )
 
 
 class Bundle(object):
@@ -236,6 +254,30 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     return output if len(output) > 0 else None
 
+  def async_local_exec(self, cmdstr, logfile='/dev/null', track=False):
+    """ Async local execution """
+    # add tracker
+    tracker = rand_tracker(label='local') if track else ''
+    cmdstr = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
+    # cmd footer
+    _cmd_footer = cmd.CMD_LOG_FOOTER_ASYNC.format(logfile=logfile)
+    # update command
+    cmdstr = ' '.join([cmdstr, ' ', _cmd_footer])
+    # create process
+    process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE, shell=True)
+    try:
+      output, error = process.communicate()
+    except KeyboardInterrupt:
+      logger.error('\tYou interrupted!')
+
+    # keep track of it
+    self.processes.append((tracker, cmdstr))
+    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmdstr))
+    # update cache
+    self.cache_()
+
+    return tracker
+
   def async_remote_exec(self, cmdstr, logfile=None, track=True):
     """ Async execute command in remote machine """
 
@@ -243,16 +285,16 @@ class ExecSpace(object):  # think of a bubble over the bundle
     logfile = logfile if logfile else self.logfile
 
     # place a tracker
-    tracker = random.randint(999999, 9999999) if track else ''
+    tracker = rand_tracker() if track else ''
     cmd_tracked = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
 
     # open a channel
     client = self.get_client()
     channel = client.get_transport().open_session()
     # add sync footer
-    async_footer = cmd.CMD_LOG_FOOTER.format(logfile=logfile)
+    async_footer = cmd.CMD_LOG_FOOTER_ASYNC.format(logfile=logfile)
     # execute command async
-    channel.exec_command(cmd_tracked + async_footer)
+    channel.exec_command(cmd_tracked + ' ' + async_footer)
 
     # keep track of it
     self.processes.append((tracker, cmdstr))
@@ -447,7 +489,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
     _cmd_header = self._header_cd()  # change to remote_dir
     # . build cmd body
     # .. choose a port number
-    server_port_num = random.randint(8824, 8850)
+    server_port_num = rand_server_port()
     # ... fill in jupyter server cmd
     _cmd_body = cmd.JUPYTER_SERVER.format(port_num=server_port_num)
     # join
@@ -460,7 +502,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     # . choose a client port number
     # .. build notebook client command
-    client_port_num = 8888
+    client_port_num = rand_client_port()
     cmd_local = cmd.JUPYTER_CLIENT.format(
         username=self.login.username,
         password=self.login.password,
@@ -472,25 +514,28 @@ class ExecSpace(object):  # think of a bubble over the bundle
     logger.info('\tStarting local notebook :{}'.format(client_port_num))
 
     if run_async:
-      return local_async_exec(cmd_local)
+      return self.async_local_exec(cmd_local, track=True)  # keep track of it
 
     # connect to notebook server
-    return local_exec(cmd_local)
+    return local_exec(cmd_local)  # not
 
   def list_processes(self, print_log=False):
     # get client
     client = self.get_client()
-    _, stdout, _ = client.exec_command(
-        cmd.PROCESS_LIST_LINUX.format('python')
-        )
-    proc_log = str('\n'.join(stdout.readlines()))
+    _, stdout, _ = client.exec_command(cmd.PROCESS_LIST_LINUX)
+    remote_proc_log = str('\n'.join(stdout.readlines()))
+    # local_proc_log = str('\n'.join(local_exec(cmd.PROCESS_LIST_OSX)))
+    # logger.info(local_exec(cmd.PROCESS_LIST_OSX))
+    local_proc_log = ''
 
     active_processes = []
     # [all] option
     logger.info('[0] * all')
     i = 1
     for (tracker, cmd_) in self.processes:
-      if str(tracker) in proc_log:  # search for tracker in process log
+      # search for tracker in process log
+      if str(tracker) in remote_proc_log or \
+          str(tracker) in local_proc_log:  # or in the local process log
         active_processes.append((tracker, cmd_))
         logger.info('[{idx}] {tracker} ({cmd})'.format(
           idx=i, tracker=tracker, cmd=cmd_
@@ -513,14 +558,17 @@ class ExecSpace(object):  # think of a bubble over the bundle
     # iterate through processes to be killed
     for tracker, cmd_ in dead_procs:
       # get process id using tracker
-      _, stdout, _ = client.exec_command(
-          cmd.PROCESS_LIST_LINUX.format(tracker)
-          )
-
+      proc_list_cmd = cmd.PROCESS_LIST_LINUX if 'remote' in tracker \
+          else cmd.PROCESS_LIST_OSX
+      _, stdout, _ = client.exec_command(proc_list_cmd)
       # parse output of `ps` command
       proc_log = [ line.replace('\n', '') for line in stdout.readlines()
           if 'grep' not in line ]
       pids = [ int(line.split(' ')[1]) for line in proc_log ]
       # kill remote process
       pid = max(pids)  # choose pid
-      client.exec_command(cmd.KILL_PROCESS.format(pid))
+      # if remote tracker
+      if 'remote' in tracker:
+        client.exec_command(cmd.KILL_PROCESS.format(pid))
+      else:
+        local_exec(cmd.KILL_PROCESS.format(pid))
