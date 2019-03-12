@@ -1,11 +1,13 @@
 from recompute.config import Processor, Login
 from recompute.config import generate_config_file
 from recompute.config import CONFIG_FILE
-from recompute.espace import Bundle, ExecSpace
+from recompute.remote import Remote
+from recompute.bundle import Bundle
+
+from getpass import getpass
 
 import argparse
 import logging
-
 import os
 
 # setup logger
@@ -13,14 +15,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # parse command-line arguments
-parser = argparse.ArgumentParser(description='Add some integers.')
+parser = argparse.ArgumentParser(
+    description='recompute.py -- A sweet tool for remote computation'
+    )
 # NOTE : ffs! write a descriptive help for `mode`
 parser.add_argument('mode', type=str,
-    help='(init/sync/async/rsync/install/log/list/ssh/notebook/conf/probe/data/pull/push) recompute mode')
+    help='(init/sync/async/rsync/install/log/list/ssh/notebook/conf/probe/data/pull/push,sshadd) recompute mode')
 parser.add_argument('cmd', nargs='?', default='None',
     help='command to run in remote system')
-parser.add_argument('--remote_home', nargs='?', default='~/projects/',
-    help='remote ~/projects/ directory')
+parser.add_argument('--remote_home', nargs='?', default='projects/',
+    help='remote projects/ directory')
 parser.add_argument('--urls', nargs='?', default='',
     help='comma-separated list of URLs')
 parser.add_argument('--login', nargs='?', default='',
@@ -61,7 +65,7 @@ def init(login=None):
   bundle = Bundle()
 
   # create execution space
-  void = ExecSpace(login, bundle, remote_home=args.remote_home)
+  void = Remote(login, bundle, remote_home=args.remote_home)
 
   # sync files
   void.sync()  # TODO : make sync optional -u
@@ -77,7 +81,12 @@ def cache_exists():
 
 
 def create_void():
-  return ExecSpace() if cache_exists() else init()
+  if cache_exists():
+    logger.info('cache exists')
+    return Remote()
+
+  logger.info('cache doesn\'t exist')
+  return init()
 
 
 def main():  # package entry point
@@ -92,14 +101,14 @@ def main():  # package entry point
   # . check if user inputs a specific login
   if args.login:
     # create config
-    config = Processor().config
+    config = Processor().config_default
     # .. create `Login` instance
     login = Login(password=config['remotepass']).resolve(args.login)
     logger.debug(login.username, login.host)
   else:
     login = None
 
-  # ------------ conf ----------- #
+  # ------------ conf ------------ #
   if args.mode == 'conf':  # generate config file
     """ Mode : Generate configuration file """
     # check if config file doesn't exists
@@ -110,6 +119,21 @@ def main():  # package entry point
     else:
       logger.error('\tConfig exists already\n\t[{}]'.format(CONFIG_FILE))
       logger.error('\tAin\'t nobody got time to overwrite that!')
+
+  # ------------ sshadd ---------- #
+  if args.mode == 'sshadd':  # add remote instance
+    """ Mode : Add remote instance to config """
+    try:
+      assert args.login  # make sure user@host is given as input
+      # get password from user
+      password = getpass('Password:')
+      # . create Login instance
+      # .. parse user@host
+      login = Login(password=password).resolve(args.login)
+      # add login to config
+      proc.add_instance(login)
+    except AssertionError:
+      logger.error('Invalid/Empty login')
 
   # ------------ probe ----------- #
   elif args.mode == 'probe':  # probe remote machines
@@ -138,7 +162,7 @@ def main():  # package entry point
     void = create_void()
     # look for python execution
     if 'python' in args.cmd and args.rsync:  # TODO : this is pretty hacky;
-      void.sync(update=args.force)           # you are better than this!
+      void.rsync(update=args.force)           # you are better than this!
     # blocking execute `cmd` in remote
     void.log_remote_exec(args.cmd)
 
@@ -150,7 +174,7 @@ def main():  # package entry point
     void = create_void()
     # look for python execution
     if 'python' in args.cmd and args.rsync:
-      void.sync(update=args.force)
+      void.rsync(update=args.force)
     # async execute `cmd` in remote
     void.log_async_remote_exec(args.cmd)
 
@@ -158,7 +182,7 @@ def main():  # package entry point
   elif args.mode == 'rsync':
     """ Mode : Rsync files """
     # create void from cache
-    create_void().sync(update=args.force)
+    create_void().rsync(update=args.force)
 
   # ------------ install --------- #
   elif args.mode == 'install':

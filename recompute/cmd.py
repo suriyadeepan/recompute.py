@@ -6,8 +6,9 @@ JUPYTER_SERVER = 'jupyter notebook --no-browser --port={port_num} --NotebookApp.
 JUPYTER_CLIENT = 'sshpass -p {password} \
     ssh -N -L {client_port_num}:localhost:{server_port_num} \
     {username}@{host}'
-PROCESS_LIST_LINUX = 'ps -aux | grep python | grep jupyter'
-PROCESS_LIST_OSX = 'ps aux | grep jupyter}'
+PROCESS_LIST_LINUX = 'ps -aux | grep python'
+PROCESS_LIST_OSX = 'ps aux | grep jupyter'
+PROCESS_PID_LINUX = 'ps -aux | grep {pid}'
 KILL_PROCESS = 'kill -9 {}'
 SSH_HEADER = 'sshpass -p {password}'
 SCP_FROM_REMOTE = 'scp -r {username}@{host}:{remotepath} {localpath}'
@@ -15,6 +16,7 @@ SCP_TO_REMOTE = 'scp -r {localpath} {username}@{host}:{remotepath}'
 RSYNC = 'rsync -a --files-from={deps_file} . \
         {username}@{host}:{remote_dir}'
 SSH_EXEC = 'ssh {username}@{host} {cmd}'
+SSH_EXEC_ASYNC = 'ssh {username}@{host} \'nohup {cmd} > /dev/null 2>&1 & echo $!\''
 __SSH_INTO_REMOTE_DIR = 'ssh -t {username}@{host} \
             "cd {remote_dir}; exec \\$SHELL --login"'
 SSH_INTO_REMOTE_DIR = SSH_HEADER + ' ' + __SSH_INTO_REMOTE_DIR

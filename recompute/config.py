@@ -6,10 +6,11 @@ import paramiko
 import pickle
 from recompute import cmd
 
-from recompute.espace import remote_exec
+from recompute.process import remote_execute
 
 # configuration
 CONFIG_FILE = os.path.join(os.environ['HOME'], '.recompute.conf')
+LOCAL_CONFIG_DIR = '.recompute'
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,8 +34,8 @@ def generate_config_file():
   config.set('DEFAULT', 'remote_home', '~/projects/')
 
   # write to $HOME/.recompute.conf
-  with open(CONFIG_FILE, 'w') as f_config:
-    f_config.write(f_config)
+  with open(CONFIG_FILE, 'w') as configfile:
+    f_config.write(configfile)
   # config saved!
   logger.info('\tConfig written to \n\t[{}]'.format(CONFIG_FILE))
   return config
@@ -58,15 +59,33 @@ class Login():
 
 class Processor():
 
-  def __init__(self, config_file=CONFIG_FILE):
-    self.config = self.load_config(config_file)
+  def __init__(self):
+    self.config = self.load_config()
+    self.config_default = self.config['DEFAULT']
     self.client = None
 
-  def load_config(self, config_file):
+  def load_config(self):
     """ Load config dictionary from configuration file """
     config = configparser.ConfigParser()
-    config.read(config_file)
-    return config['DEFAULT']
+    config.read(CONFIG_FILE)
+    return config
+
+  def add_instance(self, login):
+    # make sure the login is active
+    assert self.is_login_active(login)
+    logger.debug('login successful')
+    # infer instance index
+    idx = len([ sec for sec in dict(self.config).keys()
+      if 'instance ' in sec ])
+    # add instance to config file
+    self.config['instance {}'.format(idx)] = {
+        'user' : login.username,
+        'host' : login.host,
+        'password' : login.password
+        }
+    # overwrite config file
+    self.config.write(open(CONFIG_FILE, 'w'))
+    logger.debug('config file updated')
 
   def is_host_up(self, host):
     """ Check if a host machine is online """
@@ -74,20 +93,20 @@ class Processor():
 
   def make_host(self, machine):
     """ Append domain name to Machine """
-    if not self.config['domain']:
+    if not self.config_default['domain']:
       return machine
-    return '{}.{}'.format(machine, self.config['domain'])
+    return '{}.{}'.format(machine, self.config_default['domain'])
 
   def get_hosts(self):
     """" Return a list of hosts from configuration """
-    assert self.config['machines']
+    assert self.config_default['machines']
     return [ self.make_host(machine)
-        for machine in self.config['machines'].split(',')
+        for machine in self.config_default['machines'].split(',')
         ]
 
   def get_active_hosts(self):
     """ Return a list of active hosts """
-    assert self.config
+    assert self.config_default
     return [ host for host in self.get_hosts()
         if self.is_host_up(host) ]
 
@@ -101,7 +120,7 @@ class Processor():
     from prettytable import PrettyTable
 
     # get config
-    config = self.config
+    config = self.config_default
 
     def dict_to_table(hosts):
       # build a frickin table
@@ -129,8 +148,8 @@ class Processor():
         # set host
         login.host = host
         # gather info from remote machines
-        free_gpu_memory = int(remote_exec(cmd.GPU_FREE_MEMORY, login))
-        free_disk_space = int(remote_exec(cmd.DISK_FREE_MEMORY, login))
+        free_gpu_memory = int(remote_execute(cmd.GPU_FREE_MEMORY, login))
+        free_disk_space = int(remote_execute(cmd.DISK_FREE_MEMORY, login))
         # update dictionary
         hosts[host][2] = free_gpu_memory
         hosts[host][3] = free_disk_space
@@ -167,10 +186,10 @@ class Processor():
 
     logging.info('Active Hosts : {}'.format(hosts))
     for host in hosts:
-      for user in self.config['users'].split(','):
+      for user in self.config_default['users'].split(','):
         logging.info(':: Checking {}@{}'.format(user, host))
         # build Login instance
-        login = Login(user, self.config['remotepass'], host)
+        login = Login(user, self.config_default['remotepass'], host)
         # check if login is active
         if self.is_login_active(login):
           logging.info('[Y]')

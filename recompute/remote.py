@@ -1,4 +1,3 @@
-import subprocess
 import paramiko
 import pickle
 import random
@@ -8,47 +7,11 @@ import os
 import logging
 
 from recompute import cmd
+from recompute.process import execute, async_execute
 
 # setup logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def local_exec(cmdstr, timeout=10):
-  process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE)
-  logger.info(cmdstr)
-  try:
-    output, error = process.communicate()
-    return output if output else True
-  except:
-    logger.error('\tExecution Failed!')
-
-
-def local_async_exec(cmdstr, logfile='/dev/null', track=True):
-  # add tracker
-  tracker = rand_tracker(label='local') if track else ''
-  cmdstr = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
-  # cmd footer
-  _cmd_footer = cmd.CMD_LOG_FOOTER_ASYNC.format(logfile)
-  # update command
-  cmdstr = ' '.join([cmdstr, ' ', _cmd_footer])
-  # create process
-  process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE, shell=True)
-  try:
-    output, error = process.communicate()
-    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmdstr))
-    return tracker
-  except KeyboardInterrupt:
-    logger.error('\tYou interrupted!')
-
-
-def remote_exec(cmdstr, login):
-  _header = cmd.SSH_HEADER.format(password=login.password)
-  _body = cmd.SSH_EXEC.format(
-      username=login.username,
-      host=login.host, cmd=cmdstr
-      )
-  return local_exec(' '.join([_header, _body]))
 
 
 def rand_server_port(a=8824, b=8850):
@@ -71,59 +34,7 @@ def rand_token(n=12):
       )
 
 
-class Bundle(object):
-
-  def __init__(self, name=None):
-    # get current path
-    self.path = os.path.abspath('.')
-    # get name of current directory if custom name isn't given
-    self.name = name if name else self.path.split('/')[-1]
-    # local db
-    self.db = '.recompute/rsync.db'  # TODO : let's not hardcode this
-    # update bundle dependencies
-    self.update_dependencies()
-
-  def update_dependencies(self):
-    """ Update dependencies """
-    # get a list of files (local dependencies)
-    self.files = list(self.get_local_deps())
-    # create a file containing list of dependencies
-    self.populate_requirements()
-    # get a list of dependencies (python packages)
-    self.requirements = self.get_requirements()
-    # create a file containting list of local dependencies
-    self.populate_local_deps()
-
-  def get_local_deps(self):
-    """ Run a search for *.py files in current directory """
-    for dirpath, dirnames, filenames in os.walk("."):
-      for filename in [f for f in filenames if f.endswith(".py")]:
-        yield os.path.join(dirpath, filename)
-
-  def populate_local_deps(self):
-    """ Write local dependencies to file """
-    with open(self.db, 'w') as db:
-      for filename in self.files:
-        logger.debug(filename)
-        db.write(filename)
-        db.write('\n')
-
-  def populate_requirements(self):
-    # . get a list of pip packages
-    # .. write to requirements.txt
-    assert local_exec('pipreqs . --force')
-    # add pytest to requirements.txt
-    with open('requirements.txt', 'a') as f_req:
-      f_req.write('\npytest')
-
-  def get_requirements(self):
-    return [ line.replace('\n', '')
-        for line in open('requirements.txt').readlines()
-        if line.replace('\n', '')
-        ]
-
-
-class ExecSpace(object):  # think of a bubble over the bundle
+class Remote(object):  # think of a bubble over the bundle
 
   def __init__(self, login=None, bundle=None, remote_home=None):
     """ Execution Space : The Void """
@@ -144,12 +55,14 @@ class ExecSpace(object):  # think of a bubble over the bundle
     # create an SSH Client
     self.client = None  # self.init_client()
 
-    # ~/projects/ folder in remote machine
-    self.remote_home = remote_home if remote_home else '~/projects/'
-    # ~/projects/project/ folder in remote machine
+    # projects/ folder in remote machine
+    self.remote_home = remote_home if remote_home else 'projects/'
+    # projects/project/ folder in remote machine
     self.remote_dir = os.path.join(self.remote_home, self.bundle.name)
-    # ~/projects/project/data/
+    # projects/project/data/
     self.remote_data = os.path.join(self.remote_dir, 'data/')
+    # make directories in remote machine
+    self.make_dirs()
 
     # build remote log file path
     self.logfile = os.path.join(self.remote_dir,
@@ -229,18 +142,26 @@ class ExecSpace(object):  # think of a bubble over the bundle
 
     return ' '.join([_header, _body])
 
-  def sync(self, update=False):
+  def make_dirs(self):
+    # execute make directory command from local machine
+    mkcmd = self.make_mkcmd()
+    logger.info(mkcmd)
+    assert execute(mkcmd)
+    # make data/ directory
+    remote_data_ = self.make_mkcmd(self.remote_data)
+    logger.info(remote_data_)
+    assert execute(remote_data_)
+
+  def rsync(self, update=False):
     """ Rsync files between local and remote systems """
 
     if update:  # update bundle
       self.bundle.update_dependencies()
 
-    # execute make directory command from local machine
-    assert local_exec(self.make_mkcmd())
-    # make data/ directory
-    assert local_exec(self.make_mkcmd(self.remote_data))
     # execute rsync
-    return local_exec(self.make_rsync_cmd())
+    rsync_cmd = self.make_rsync_cmd()
+    logger.info(rsync_cmd)
+    return execute(rsync_cmd)
 
   def remote_exec(self, cmdstr):
     """ Execute command in remote machine via `client` """
@@ -253,30 +174,6 @@ class ExecSpace(object):  # think of a bubble over the bundle
       return output[-1]
 
     return output if len(output) > 0 else None
-
-  def async_local_exec(self, cmdstr, logfile='/dev/null', track=False):
-    """ Async local execution """
-    # add tracker
-    tracker = rand_tracker(label='local') if track else ''
-    cmdstr = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
-    # cmd footer
-    _cmd_footer = cmd.CMD_LOG_FOOTER_ASYNC.format(logfile=logfile)
-    # update command
-    cmdstr = ' '.join([cmdstr, ' ', _cmd_footer])
-    # create process
-    process = subprocess.Popen(cmdstr.split(), stdout=subprocess.PIPE, shell=True)
-    try:
-      output, error = process.communicate()
-    except KeyboardInterrupt:
-      logger.error('\tYou interrupted!')
-
-    # keep track of it
-    self.processes.append((tracker, cmdstr))
-    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmdstr))
-    # update cache
-    self.cache_()
-
-    return tracker
 
   def async_remote_exec(self, cmdstr, logfile=None, track=True):
     """ Async execute command in remote machine """
@@ -311,7 +208,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
     remotepath = remotepath if remotepath else self.remote_data
     # build copy cmd
     _header = cmd.SSH_HEADER.format(password=self.login.password)
-    _body = cmd.SCP.format(
+    _body = cmd.SCP_TO_REMOTE.format(
         username=self.login.username,
         host=self.login.host,
         remotepath=remotepath,
@@ -319,7 +216,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
         )
     copy_cmd = ' '.join([_header, _body])
     # local execute scp
-    local_exec(copy_cmd)
+    execute(copy_cmd)
 
   def get_file_from_remote(self, remotepath, localpath=None):
     """ Copy file to local machine """
@@ -335,7 +232,7 @@ class ExecSpace(object):  # think of a bubble over the bundle
         )
     copy_cmd = ' '.join([_header, _body])
     # execute scp command
-    local_exec(copy_cmd)
+    execute(copy_cmd)
 
     # get last modified date
     _, stdout, _ = self.get_client().exec_command(
@@ -514,18 +411,19 @@ class ExecSpace(object):  # think of a bubble over the bundle
     logger.info('\tStarting local notebook :{}'.format(client_port_num))
 
     if run_async:
-      return self.async_local_exec(cmd_local, track=True)  # keep track of it
+      pid_local_hook = async_execute(cmd_local)
+      self.processes.append((pid_local_hook, cmd_local))
 
     # connect to notebook server
-    return local_exec(cmd_local)  # not
+    return execute(cmd_local)  # not
 
   def list_processes(self, print_log=False):
     # get client
     client = self.get_client()
     _, stdout, _ = client.exec_command(cmd.PROCESS_LIST_LINUX)
     remote_proc_log = str('\n'.join(stdout.readlines()))
-    # local_proc_log = str('\n'.join(local_exec(cmd.PROCESS_LIST_OSX)))
-    # logger.info(local_exec(cmd.PROCESS_LIST_OSX))
+    # local_proc_log = str('\n'.join(execute(cmd.PROCESS_LIST_OSX)))
+    # logger.info(execute(cmd.PROCESS_LIST_OSX))
     local_proc_log = ''
 
     active_processes = []
@@ -571,4 +469,4 @@ class ExecSpace(object):  # think of a bubble over the bundle
       if 'remote' in tracker:
         client.exec_command(cmd.KILL_PROCESS.format(pid))
       else:
-        local_exec(cmd.KILL_PROCESS.format(pid))
+        execute(cmd.KILL_PROCESS.format(pid))
