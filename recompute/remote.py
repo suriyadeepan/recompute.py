@@ -8,10 +8,17 @@ import logging
 
 from recompute import cmd
 from recompute.process import execute, async_execute
+from recompute.process import remote_execute, remote_async_execute
+from recompute import process
+
+from recompute import utils
 
 # setup logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# void cache
+VOID_CACHE = '.recompute/void'
 
 
 def rand_server_port(a=8824, b=8850):
@@ -40,7 +47,7 @@ class Remote(object):  # think of a bubble over the bundle
     """ Execution Space : The Void """
 
     # cache name
-    self.CACHE = '.recompute/void'
+    self.CACHE = VOID_CACHE
     cache = None
 
     if not login and not bundle:
@@ -56,19 +63,22 @@ class Remote(object):  # think of a bubble over the bundle
     self.client = None  # self.init_client()
 
     # projects/ folder in remote machine
-    self.remote_home = remote_home if remote_home else 'projects/'
+    if not remote_home:
+      remote_home = os.path.join(self.get_remote_home_dir(), 'projects/')
+    self.remote_home = remote_home
     # projects/project/ folder in remote machine
     self.remote_dir = os.path.join(self.remote_home, self.bundle.name)
     # projects/project/data/
     self.remote_data = os.path.join(self.remote_dir, 'data/')
-    # make directories in remote machine
-    self.make_dirs()
+
+    if not cache:
+      # make directories in remote machine
+      self.make_dirs()
 
     # build remote log file path
     self.logfile = os.path.join(self.remote_dir,
         '{}.log'.format(self.bundle.name)
       )
-
     # build local log file path
     self.local_logfile = os.path.join(
         self.bundle.path,
@@ -77,9 +87,13 @@ class Remote(object):  # think of a bubble over the bundle
 
     # list spawned proceses
     self.processes = [] if not cache else cache['processes']
-
     # cache void
     self.cache_()
+
+  def get_remote_home_dir(self):
+    """ Get $HOME directory path from remote system """
+    pid, output = process.remote_execute('pwd', self.login)  # [-1].strip()
+    return output.replace('\n', '').strip()
 
   def cache_(self, name=None):
     # get cache name
@@ -163,44 +177,43 @@ class Remote(object):  # think of a bubble over the bundle
     logger.info(rsync_cmd)
     return execute(rsync_cmd)
 
-  def remote_exec(self, cmdstr):
-    """ Execute command in remote machine via `client` """
-    # get client
-    client = self.get_client()
-    stdin, stdout, stderr = client.exec_command(cmdstr)
-    output = [ line.strip('\n') for line in stdout ]
+  def async_execute(self, commands, logfile=None, name='runner'):
+    return self.execute(commands, run_async=True, log=True, logfile=logfile, name=name)
 
-    if len(output) == 1:  # one-liners
-      return output[-1]
-
-    return output if len(output) > 0 else None
-
-  def async_remote_exec(self, cmdstr, logfile=None, track=True):
-    """ Async execute command in remote machine """
-
-    # resolve which logfile to write to
+  def execute(self, commands, run_async=False, log=True, logfile=None, name='runner'):
+    # resolve log file
     logfile = logfile if logfile else self.logfile
+    # create runner
+    runner = process.create_runner(self.remote_dir, commands, logfile, run_async=run_async)
+    # push runner to remote
+    self.copy_file_to_remote(
+        os.path.join(self.bundle.path, runner),  # abs path of current dir
+        self.remote_dir
+        )
+    # get absolute path of runner
+    runner_abs_path = os.path.join(self.remote_dir, runner)
+    # execute runner in remote machine
+    exec_fn = remote_async_execute if run_async else remote_execute
+    pid, output = exec_fn(cmd.EXEC_RUNNER.format(runner=runner_abs_path), login=self.login)
 
-    # place a tracker
-    tracker = rand_tracker() if track else ''
-    cmd_tracked = '{cmd} {tracker}'.format(cmd=cmdstr, tracker=tracker)
-
-    # open a channel
-    client = self.get_client()
-    channel = client.get_transport().open_session()
-    # add sync footer
-    async_footer = cmd.CMD_LOG_FOOTER_ASYNC.format(logfile=logfile)
-    # execute command async
-    channel.exec_command(cmd_tracked + ' ' + async_footer)
-
-    # keep track of it
-    self.processes.append((tracker, cmdstr))
-    logger.info('\t{pid} ({cmd})'.format(pid=tracker, cmd=cmdstr))
-
-    # update cache
+    # add pid to processes
+    self.processes.append((name, pid))
     self.cache_()
+    return pid, output
 
-    return tracker
+  def execute_command(self, cmdstr, run_async=False, log=False, logfile=None, 
+      bypass_subprocess=True):
+    logger.info(cmdstr)
+    # if we are running async
+    if run_async:
+      return process.remote_async_execute(cmdstr, self.login, logfile)
+    # --- sync execution --- #
+    # execute in remote machine
+    return process.remote_execute(cmdstr, self.login, 
+        bypass_subprocess=bypass_subprocess)
+
+  def async_execute_command(self, cmdstr, logfile=None):
+    return self.execute_command(cmdstr, run_async=True, log=True, logfile=logfile)
 
   def copy_file_to_remote(self, localpath, remotepath=None):
     """ Copy file to remote machine """
@@ -233,51 +246,6 @@ class Remote(object):  # think of a bubble over the bundle
     copy_cmd = ' '.join([_header, _body])
     # execute scp command
     execute(copy_cmd)
-
-    # get last modified date
-    _, stdout, _ = self.get_client().exec_command(
-        cmd.LAST_MODIFIED.format(filename=remotepath)
-        )
-    # read from stdout
-    last_modified = str('\n'.join(stdout.readlines())).replace('\n', '')
-    logger.info('\n\tLast Modification time : {}\n'.format(last_modified))
-    return last_modified
-
-  def log_remote_exec(self, cmd, logfile=None):
-    """ Log execution output and copy log to local machine """
-
-    # resolve which logfile to write to
-    logfile = logfile if logfile else self.logfile
-
-    # add command sequence header to `cmd`
-    _cmd_seq_header = 'cd {}'.format(self.remote_dir)
-    cmd = ' && '.join([ _cmd_seq_header, cmd ])
-
-    # execute command and log to logfile
-    self.remote_exec('{cmd} > {logfile} 2>{logfile}'.format(
-      cmd=cmd, logfile=logfile)
-      )
-
-    # copy to local
-    last_modified = self.get_file_from_remote(logfile, self.bundle.path)  # '.'
-    logger.info('\n\n{}'.format(
-      open(os.path.join(self.bundle.path, logfile.split('/')[-1])).read()
-      ))
-    # return last modified date
-    return last_modified
-
-  def log_async_remote_exec(self, cmd, logfile=None):
-    """ Log execution output and copy log to local machine """
-
-    # resolve which logfile to write to
-    logfile = logfile if logfile else self.logfile
-
-    # add command sequence header to `cmd`
-    _cmd_seq_header = 'cd {}'.format(self.remote_dir)
-    cmd = ' && '.join([ _cmd_seq_header, cmd ])
-
-    # execute command
-    tracker = self.async_remote_exec(cmd, logfile)
 
   def get_remote_log(self, keyword=None, print_log=True):
     """ Copy log file in remote system to local machine """
@@ -325,15 +293,18 @@ class Remote(object):  # think of a bubble over the bundle
 
     if update:  # update bundle
       self.bundle.update_dependencies()
+    # install
+    self.install(self.bundle.get_requirements())
 
-    # make pip-install command
+  def install(self, packages):
+     # make pip-install command
     pip_install_cmd = 'python3 -m pip install --user {}'.format(
-        ' '.join(self.bundle.get_requirements())
+        ' '.join(packages)
         )
     logger.info('\tInstall dependencies\n\t{}'.format(pip_install_cmd))
 
     # remote execute cmd
-    logger.info('\n\t{}'.format(self.remote_exec(pip_install_cmd)))
+    logger.info('\n\t{}'.format(self.execute_command(pip_install_cmd)))
 
   def _header_cd(self, dir_=None):
     """ Change Directory header """
@@ -364,10 +335,7 @@ class Remote(object):  # think of a bubble over the bundle
       return True
 
     # run (download) sync
-    logger.info(self.remote_exec(cmd_str + _cmd_footer))
-
-    # get log file from remote to local machine
-    last_modified = self.get_file_from_remote(data_logfile, self.bundle.path)
+    logger.info(self.execute_command(cmd_str + _cmd_footer))
 
   def get_session(self):
     """ Create a session session """
@@ -380,22 +348,19 @@ class Remote(object):  # think of a bubble over the bundle
           )
         )
 
-  def start_notebook(self, run_async=False):
+  def start_notebook(self, run_async=False, name='jupyter notebook', force=False):
     """ Create and connect to remote notebook server """
-    # build cmd header
-    _cmd_header = self._header_cd()  # change to remote_dir
-    # . build cmd body
-    # .. choose a port number
+    # install jupyter notebook
+    # self.install(['jupyter'])
+    # choose a port number
     server_port_num = rand_server_port()
-    # ... fill in jupyter server cmd
-    _cmd_body = cmd.JUPYTER_SERVER.format(port_num=server_port_num)
-    # join
-    cmd_str = ' && '.join([ _cmd_header, _cmd_body ])
+    # start jupyter server
+    commands = [ cmd.JUPYTER_SERVER.format(port_num=server_port_num) ]
+    pid, output = self.async_execute(commands, logfile='/dev/null', name=name)
 
-    # NOTE : figure out a way to kill the notebook as well
-    tracker = self.async_remote_exec(cmd_str, logfile='/dev/null')
     logger.info('\tStarted notebook server in remote machine :{}'.format(
-      server_port_num))
+      server_port_num)
+      )
 
     # . choose a client port number
     # .. build notebook client command
@@ -408,65 +373,41 @@ class Remote(object):  # think of a bubble over the bundle
         server_port_num=server_port_num
         )
 
-    logger.info('\tStarting local notebook :{}'.format(client_port_num))
+    logger.info('Starting local notebook ')
+    logger.info('\thttp://localhost:{}/tree'.format(client_port_num))
 
     if run_async:
-      pid_local_hook = async_execute(cmd_local)
-      self.processes.append((pid_local_hook, cmd_local))
+      pid, output = async_execute(cmd_local)
 
     # connect to notebook server
-    return execute(cmd_local)  # not
+    return execute(cmd_local)
 
-  def list_processes(self, print_log=False):
-    # get client
-    client = self.get_client()
-    _, stdout, _ = client.exec_command(cmd.PROCESS_LIST_LINUX)
-    remote_proc_log = str('\n'.join(stdout.readlines()))
-    # local_proc_log = str('\n'.join(execute(cmd.PROCESS_LIST_OSX)))
-    # logger.info(execute(cmd.PROCESS_LIST_OSX))
-    local_proc_log = ''
+  def list_processes(self, print_log=False, force=False):
+    if force:
+      # get list of processes
+      command = ' '.join([
+        cmd.SSH_HEADER.format(password=self.login.password),
+        cmd.SSH_EXEC.format(username=self.login.username, host=self.login.host,
+          cmd=cmd.PROCESS_LIST_LINUX.format(username=self.login.username)
+          )
+        ])
+      pid, output = execute(command)
+      pids = utils.parse_ps_results(output)
+      self.processes = [ (name, pid) for name, pid in self.processes if pid in pids ]
+      # update cache
+      self.cache_()
 
-    active_processes = []
-    # [all] option
-    logger.info('[0] * all')
-    i = 1
-    for (tracker, cmd_) in self.processes:
-      # search for tracker in process log
-      if str(tracker) in remote_proc_log or \
-          str(tracker) in local_proc_log:  # or in the local process log
-        active_processes.append((tracker, cmd_))
-        logger.info('[{idx}] {tracker} ({cmd})'.format(
-          idx=i, tracker=tracker, cmd=cmd_
-          ))
-        i = i + 1
+    if print_log:
+      print('[ *] {:>20}'.format('all'))
+      for i, (name, pid) in enumerate(self.processes):
+        print('[{:>2}] {:>20} {:>8}'.format(i + 1, name, pid))
 
-    # keep track of acive_processes
-    self.processes = active_processes
+    logger.info(self.processes)
+    return [ proc[-1] for proc in self.processes ]
 
-    return self.processes
-
-  def kill(self, idx, force=True):
-    # get client
-    client = self.get_client()
-    # get list of active proceses
-    processes = self.list_processes() if force else self.processes
-    # if idx == 0 -> kill them all!
-    dead_procs = [ processes[idx - 1] ] if idx > 0 else processes
-
-    # iterate through processes to be killed
-    for tracker, cmd_ in dead_procs:
-      # get process id using tracker
-      proc_list_cmd = cmd.PROCESS_LIST_LINUX if 'remote' in tracker \
-          else cmd.PROCESS_LIST_OSX
-      _, stdout, _ = client.exec_command(proc_list_cmd)
-      # parse output of `ps` command
-      proc_log = [ line.replace('\n', '') for line in stdout.readlines()
-          if 'grep' not in line ]
-      pids = [ int(line.split(' ')[1]) for line in proc_log ]
-      # kill remote process
-      pid = max(pids)  # choose pid
-      # if remote tracker
-      if 'remote' in tracker:
-        client.exec_command(cmd.KILL_PROCESS.format(pid))
-      else:
-        execute(cmd.KILL_PROCESS.format(pid))
+  def kill(self, idx, force=False):
+    pids = self.list_processes(force=force)
+    if len(pids) > 0:
+      procs_to_kill = pids if idx == 0 else [pids[idx - 1]]
+      if len(procs_to_kill) > 0:
+        process.kill_remote_process(procs_to_kill, login=self.login)

@@ -1,8 +1,8 @@
 from recompute.config import Processor, Login
 from recompute.config import generate_config_file
-from recompute.config import CONFIG_FILE
 from recompute.remote import Remote
 from recompute.bundle import Bundle
+from recompute.remote import VOID_CACHE
 
 from getpass import getpass
 
@@ -23,7 +23,7 @@ parser.add_argument('mode', type=str,
     help='(init/sync/async/rsync/install/log/list/ssh/notebook/conf/probe/data/pull/push,sshadd) recompute mode')
 parser.add_argument('cmd', nargs='?', default='None',
     help='command to run in remote system')
-parser.add_argument('--remote_home', nargs='?', default='projects/',
+parser.add_argument('--remote_home', nargs='?', default='/home/oni/projects/',
     help='remote projects/ directory')
 parser.add_argument('--urls', nargs='?', default='',
     help='comma-separated list of URLs')
@@ -35,6 +35,10 @@ parser.add_argument('--loop', nargs='?', default='',
     help='number of seconds to wait to fetch log')
 parser.add_argument('--idx', nargs='?', default='',
     help='process idx to operate on')
+parser.add_argument('--name', nargs='?', default='runner',
+    help='name of process')
+parser.add_argument('--instance', nargs='?', default=0,
+    help='remote instance to use')
 parser.add_argument('--force', default=False, action='store_true',
     help='clear cache')
 parser.add_argument('--no-force', dest='force', action='store_false')
@@ -47,29 +51,18 @@ parser.add_argument('--no-rsync', dest='rsync', action='store_false')
 args = parser.parse_args()
 
 
-def init(login=None):
-  # create cache folder
-  if not os.path.exists('.recompute'):
-    os.makedirs('.recompute')
-
-  # get config
+def init():
+  # get processor instance
   proc = Processor()
-  config = proc.config
-
   # create default login
-  login = Login(config['defaultuser'], config['remotepass'],
-      proc.make_host(config['defaulthost'])
-      ) if not login else login
-
+  instance = int(args.instance) if args.instance else None
+  login = proc.get_instance(instance)
   # create bundle
   bundle = Bundle()
-
-  # create execution space
+  # create remote instance handle
   void = Remote(login, bundle, remote_home=args.remote_home)
-
   # sync files
-  void.sync()  # TODO : make sync optional -u
-
+  void.rsync()  # TODO : make sync optional -u
   # install from requirements.txt
   void.install_deps()  # TODO : make this optional -i
 
@@ -77,7 +70,7 @@ def init(login=None):
 
 
 def cache_exists():
-  return os.path.exists('.recompute/void')
+  return os.path.exists(VOID_CACHE)
 
 
 def create_void():
@@ -97,31 +90,15 @@ def main():  # package entry point
   # load config from file
   config = proc.config
 
-  """ Custom Login """
-  # . check if user inputs a specific login
-  if args.login:
-    # create config
-    config = Processor().config_default
-    # .. create `Login` instance
-    login = Login(password=config['remotepass']).resolve(args.login)
-    logger.debug(login.username, login.host)
-  else:
-    login = None
-
   # ------------ conf ------------ #
   if args.mode == 'conf':  # generate config file
     """ Mode : Generate configuration file """
-    # check if config file doesn't exists
-    if not os.path.exists(CONFIG_FILE):
-      # generate one
-      config = generate_config_file()
-      logger.info(config['DEFAULT'])
-    else:
-      logger.error('\tConfig exists already\n\t[{}]'.format(CONFIG_FILE))
-      logger.error('\tAin\'t nobody got time to overwrite that!')
+    config = generate_config_file()
+    if not config:
+      logger.info('config exists; use --force to overwrite it')
 
   # ------------ sshadd ---------- #
-  if args.mode == 'sshadd':  # add remote instance
+  elif args.mode == 'sshadd':  # add remote instance
     """ Mode : Add remote instance to config """
     try:
       assert args.login  # make sure user@host is given as input
@@ -152,7 +129,7 @@ def main():  # package entry point
   # ------------ init ------------ #
   elif args.mode == 'init':
     """ Mode : Initialize project in current directory """
-    init(login)  # create void anew
+    init()  # create void anew
 
   # ------------ sync ------------ #
   elif args.mode == 'sync':
@@ -162,9 +139,9 @@ def main():  # package entry point
     void = create_void()
     # look for python execution
     if 'python' in args.cmd and args.rsync:  # TODO : this is pretty hacky;
-      void.rsync(update=args.force)           # you are better than this!
+      void.rsync(update=args.force)          # you are better than this!
     # blocking execute `cmd` in remote
-    void.log_remote_exec(args.cmd)
+    void.execute([args.cmd], log=True, name=args.name)
 
   # ------------ async ----------- #
   elif args.mode == 'async':
@@ -176,7 +153,7 @@ def main():  # package entry point
     if 'python' in args.cmd and args.rsync:
       void.rsync(update=args.force)
     # async execute `cmd` in remote
-    void.log_async_remote_exec(args.cmd)
+    void.async_execute([args.cmd], name=args.name)
 
   # ------------ rsync ----------- #
   elif args.mode == 'rsync':
@@ -208,17 +185,17 @@ def main():  # package entry point
   # ------------ list ------------ #
   elif args.mode == 'list':  # list of proceses
     """ Mode : List remote processes """
-    create_void().list_processes(print_log=True)
+    create_void().list_processes(print_log=True, force=True)
 
   # ------------ kill ------------ #
   elif args.mode == 'kill':  # kill process
     """ Mode : Interactive kill """
     void = create_void()
-    procs = void.list_processes(print_log=True)
+    procs = void.list_processes(print_log=True, force=True)
     idx = int(args.idx) if args.idx else None
     if not args.idx:
       idx = int(input('kill idx [0-{}] : '.format(len(procs))))
-    void.kill(idx, force=False)  # kill process
+    void.kill(idx)
 
   # ------------ ssh ------------- #
   elif args.mode == 'ssh':  # start an ssh session

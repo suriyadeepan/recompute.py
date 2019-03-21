@@ -16,28 +16,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def generate_config_file():
-  # TODO : this is a cluster-fuck; find a better way to do this
+def generate_config_file(force=False):
+  # if config file exists
+  if os.path.exists(CONFIG_FILE) and not force:
+    return
+
+  # create config
   config = configparser.ConfigParser()
-  config.add_section('DEFAULT')
-  config.set('DEFAULT', 'default', 'user1@host')
-  config.set('DEFAULT', 'domain', 'domainame.com')
-  config.set('DEFAULT', 'machines', 'machine1,machine2,machine3')
-  config.set('DEFAULT', 'remotepasses', 'yyyy1,yyyy2,yyyy3')
-  config.set('DEFAULT', 'users', 'user1,user2,user3')
-  config.set('DEFAULT', 'test', 'uyw80x19')
-  config.set('DEFAULT', 'localuser', 'user1')
-  config.set('DEFAULT', 'localpass', 'xxxxxxx')
-  config.set('DEFAULT', 'remotepass', 'yyyyyyy')
-  config.set('DEFAULT', 'defaultuser', 'user1')
-  config.set('DEFAULT', 'defaulthost', 'localhost')
-  config.set('DEFAULT', 'remote_home', '~/projects/')
+  config.add_section('general')  # add general section
+  config.set('general', 'instance', 0)  # default instance
+  config.set('general', 'remote_home', '~/projects/')  # remote home folder
 
   # write to $HOME/.recompute.conf
-  with open(CONFIG_FILE, 'w') as configfile:
-    f_config.write(configfile)
-  # config saved!
-  logger.info('\tConfig written to \n\t[{}]'.format(CONFIG_FILE))
+  config.write(open(CONFIG_FILE, 'w'))
+  logger.info('config written to [{}]'.format(CONFIG_FILE))
+  logger.info(dict(config['general']))
   return config
 
 
@@ -61,7 +54,7 @@ class Processor():
 
   def __init__(self):
     self.config = self.load_config()
-    self.config_default = self.config['DEFAULT']
+    self.config_default = self.config['general']
     self.client = None
 
   def load_config(self):
@@ -86,6 +79,17 @@ class Processor():
     # overwrite config file
     self.config.write(open(CONFIG_FILE, 'w'))
     logger.debug('config file updated')
+
+  def get_instance(self, idx=None):
+    if idx is None:  # if idx is not given
+      # get default instance from config
+      idx = int(self.config['general']['instance'])
+    # get instance config from config file
+    instance = self.config['instance {}'.format(idx)]
+    # make sure the instance exists in config
+    assert instance
+    # return a Login instance
+    return Login(instance['user'], instance['password'], instance['host'])
 
   def is_host_up(self, host):
     """ Check if a host machine is online """
@@ -176,8 +180,8 @@ class Processor():
           password=login.password)
       self.client.close()  # connection success!
       return True
-    except paramiko.AuthenticationException:
-      pass  # connection failed!
+    except:
+      return  # connection failed!
 
   def get_active_logins(self):
     """ Get a list of active Login's """
