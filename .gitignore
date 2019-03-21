@@ -1,5 +1,8 @@
+.DS_Store
 build/
 dist/
 *.egg-info/
 *.ipynb
 __pycache__
+*.log
+.recompute
