@@ -1,6 +1,4 @@
-import paramiko
 import pickle
-import random
 import time
 import os
 
@@ -19,26 +17,6 @@ logger = logging.getLogger(__name__)
 
 # void cache
 VOID_CACHE = '.recompute/void'
-
-
-def rand_server_port(a=8824, b=8850):
-  return random.randint(a, b)
-
-
-def rand_client_port(a=8850, b=8890):
-  return random.randint(a, b)
-
-
-def rand_tracker(a=999999, b=9999999, label='remote'):
-    return '{label}_{idx}'.format(label=label, idx=random.randint(a, b))
-
-
-def rand_token(n=12):
-  import string
-  return ''.join(
-      random.choice(string.ascii_lowercase + string.digits)
-      for _ in range(n)
-      )
 
 
 class Remote(object):  # think of a bubble over the bundle
@@ -60,7 +38,7 @@ class Remote(object):  # think of a bubble over the bundle
     self.bundle = bundle if bundle else cache['bundle']
 
     # create an SSH Client
-    self.client = None  # self.init_client()
+    self.client = None
 
     # projects/ folder in remote machine
     if not remote_home:
@@ -107,30 +85,6 @@ class Remote(object):  # think of a bubble over the bundle
         }
     # dump dictionary
     pickle.dump(void_as_dict, open(self.CACHE, 'wb'))
-
-  def init_client(self):
-    # setup ssh client
-    client = paramiko.SSHClient()
-    # load local policies
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    try:
-      # connect to remote system
-      client.connect(self.instance.host, username=self.instance.username,
-          password=self.instance.password)
-    except paramiko.AuthenticationException:
-      logger.error('Authentication Failed [{}@{}]'.format(
-        self.instance.username, self.instance.host
-        ))
-      exit()
-
-    # attach to self
-    self.client = client
-
-    return client
-
-  def get_client(self):
-    return self.client if self.client else self.init_client()
 
   def make_mkcmd(self, dir_=None):
     # resolve directory to make
@@ -353,7 +307,7 @@ class Remote(object):  # think of a bubble over the bundle
     # install jupyter notebook
     # self.install(['jupyter'])
     # choose a port number
-    server_port_num = rand_server_port()
+    server_port_num = utils.rand_server_port()
     # start jupyter server
     commands = [ cmd.JUPYTER_SERVER.format(port_num=server_port_num) ]
     pid, output = self.async_execute(commands, logfile='/dev/null', name=name)
@@ -364,7 +318,7 @@ class Remote(object):  # think of a bubble over the bundle
 
     # . choose a client port number
     # .. build notebook client command
-    client_port_num = rand_client_port()
+    client_port_num = utils.rand_client_port()
     cmd_local = cmd.JUPYTER_CLIENT.format(
         username=self.instance.username,
         password=self.instance.password,

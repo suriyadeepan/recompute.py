@@ -1,5 +1,6 @@
 import os
 import logging
+import random
 
 # setup logger
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +33,16 @@ def parse_ps_results(stdout):
       if line.split(' ')[0].strip()
       ]
 
+
 def parse_free_results(stdout):
   line = stdout.split('\n')[1]
   assert 'Mem:' in line
   return int(line.split()[3])
+
+
+def rand_server_port(a=8824, b=8850):
+  return random.randint(a, b)
+
+
+def rand_client_port(a=8850, b=8890):
+  return random.randint(a, b)
