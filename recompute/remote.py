@@ -43,20 +43,20 @@ def rand_token(n=12):
 
 class Remote(object):  # think of a bubble over the bundle
 
-  def __init__(self, login=None, bundle=None, remote_home=None):
+  def __init__(self, instance=None, bundle=None, remote_home=None):
     """ Execution Space : The Void """
 
     # cache name
     self.CACHE = VOID_CACHE
     cache = None
 
-    if not login and not bundle:
+    if not instance and not bundle:
       # read from cache
       assert os.path.exists(self.CACHE)
       cache = pickle.load(open(self.CACHE, 'rb'))
       remote_home = cache['remote_home']
 
-    self.login = login if login else cache['login']
+    self.instance = instance if instance else cache['instance']
     self.bundle = bundle if bundle else cache['bundle']
 
     # create an SSH Client
@@ -92,7 +92,7 @@ class Remote(object):  # think of a bubble over the bundle
 
   def get_remote_home_dir(self):
     """ Get $HOME directory path from remote system """
-    pid, output = process.remote_execute('pwd', self.login)  # [-1].strip()
+    pid, output = process.remote_execute('pwd', self.instance)  # [-1].strip()
     return output.replace('\n', '').strip()
 
   def cache_(self, name=None):
@@ -100,7 +100,7 @@ class Remote(object):  # think of a bubble over the bundle
     name = self.CACHE if not name else name
     # create a minimal dict of self
     void_as_dict = {
-        'login' : self.login,
+        'instance' : self.instance,
         'bundle': self.bundle,
         'remote_home' : self.remote_home,
         'processes' : self.processes
@@ -116,11 +116,11 @@ class Remote(object):  # think of a bubble over the bundle
 
     try:
       # connect to remote system
-      client.connect(self.login.host, username=self.login.username,
-          password=self.login.password)
+      client.connect(self.instance.host, username=self.instance.username,
+          password=self.instance.password)
     except paramiko.AuthenticationException:
       logger.error('Authentication Failed [{}@{}]'.format(
-        self.login.username, self.login.host
+        self.instance.username, self.instance.host
         ))
       exit()
 
@@ -136,21 +136,21 @@ class Remote(object):  # think of a bubble over the bundle
     # resolve directory to make
     dir_ = dir_ if dir_ else self.remote_dir
     # create directory in remote machine
-    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _header = cmd.SSH_HEADER.format(password=self.instance.password)
     _body = cmd.SSH_MAKE_DIR.format(
-        username=self.login.username,
-        host=self.login.host,
+        username=self.instance.username,
+        host=self.instance.host,
         remote_dir=dir_
         )
     # join
     return ' '.join([_header, _body])
 
   def make_rsync_cmd(self):
-    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _header = cmd.SSH_HEADER.format(password=self.instance.password)
     _body = cmd.RSYNC.format(
             deps_file=self.bundle.db,
-            username=self.login.username,
-            host=self.login.host,
+            username=self.instance.username,
+            host=self.instance.host,
             remote_dir=self.remote_dir
             )
 
@@ -194,22 +194,22 @@ class Remote(object):  # think of a bubble over the bundle
     runner_abs_path = os.path.join(self.remote_dir, runner)
     # execute runner in remote machine
     exec_fn = remote_async_execute if run_async else remote_execute
-    pid, output = exec_fn(cmd.EXEC_RUNNER.format(runner=runner_abs_path), login=self.login)
+    pid, output = exec_fn(cmd.EXEC_RUNNER.format(runner=runner_abs_path), instance=self.instance)
 
     # add pid to processes
     self.processes.append((name, pid))
     self.cache_()
     return pid, output
 
-  def execute_command(self, cmdstr, run_async=False, log=False, logfile=None, 
-      bypass_subprocess=True):
+  def execute_command(self, cmdstr, run_async=False, log=False,
+      logfile=None, bypass_subprocess=True):
     logger.info(cmdstr)
     # if we are running async
     if run_async:
-      return process.remote_async_execute(cmdstr, self.login, logfile)
+      return process.remote_async_execute(cmdstr, self.instance, logfile)
     # --- sync execution --- #
     # execute in remote machine
-    return process.remote_execute(cmdstr, self.login, 
+    return process.remote_execute(cmdstr, self.instance,
         bypass_subprocess=bypass_subprocess)
 
   def async_execute_command(self, cmdstr, logfile=None):
@@ -220,10 +220,10 @@ class Remote(object):  # think of a bubble over the bundle
     # default remote path
     remotepath = remotepath if remotepath else self.remote_data
     # build copy cmd
-    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _header = cmd.SSH_HEADER.format(password=self.instance.password)
     _body = cmd.SCP_TO_REMOTE.format(
-        username=self.login.username,
-        host=self.login.host,
+        username=self.instance.username,
+        host=self.instance.host,
         remotepath=remotepath,
         localpath=localpath
         )
@@ -236,10 +236,10 @@ class Remote(object):  # think of a bubble over the bundle
     # default local path
     localpath = localpath if localpath else self.bundle.path
     # build copy cmd
-    _header = cmd.SSH_HEADER.format(password=self.login.password)
+    _header = cmd.SSH_HEADER.format(password=self.instance.password)
     _body = cmd.SCP_FROM_REMOTE.format(
-        username=self.login.username,
-        host=self.login.host,
+        username=self.instance.username,
+        host=self.instance.host,
         remotepath=remotepath,
         localpath=localpath
         )
@@ -250,7 +250,7 @@ class Remote(object):  # think of a bubble over the bundle
   def get_remote_log(self, keyword=None, print_log=True):
     """ Copy log file in remote system to local machine """
     # copy to local
-    last_modified = self.get_file_from_remote(self.logfile, self.bundle.path)  # '.'
+    self.get_file_from_remote(self.logfile, self.bundle.path)  # '.'
     return self.get_local_log(keyword, print_log)
 
   def get_local_log(self, keyword=None, print_log=False):
@@ -341,9 +341,9 @@ class Remote(object):  # think of a bubble over the bundle
     """ Create a session session """
     os.system(
         cmd.SSH_INTO_REMOTE_DIR.format(
-          username=self.login.username,
-          password=self.login.password,
-          host=self.login.host,
+          username=self.instance.username,
+          password=self.instance.password,
+          host=self.instance.host,
           remote_dir=self.remote_dir
           )
         )
@@ -366,9 +366,9 @@ class Remote(object):  # think of a bubble over the bundle
     # .. build notebook client command
     client_port_num = rand_client_port()
     cmd_local = cmd.JUPYTER_CLIENT.format(
-        username=self.login.username,
-        password=self.login.password,
-        host=self.login.host,
+        username=self.instance.username,
+        password=self.instance.password,
+        host=self.instance.host,
         client_port_num=client_port_num,
         server_port_num=server_port_num
         )
@@ -386,9 +386,9 @@ class Remote(object):  # think of a bubble over the bundle
     if force:
       # get list of processes
       command = ' '.join([
-        cmd.SSH_HEADER.format(password=self.login.password),
-        cmd.SSH_EXEC.format(username=self.login.username, host=self.login.host,
-          cmd=cmd.PROCESS_LIST_LINUX.format(username=self.login.username)
+        cmd.SSH_HEADER.format(password=self.instance.password),
+        cmd.SSH_EXEC.format(username=self.instance.username, host=self.instance.host,
+          cmd=cmd.PROCESS_LIST_LINUX.format(username=self.instance.username)
           )
         ])
       pid, output = execute(command)
@@ -410,4 +410,4 @@ class Remote(object):  # think of a bubble over the bundle
     if len(pids) > 0:
       procs_to_kill = pids if idx == 0 else [pids[idx - 1]]
       if len(procs_to_kill) > 0:
-        process.kill_remote_process(procs_to_kill, login=self.login)
+        process.kill_remote_process(procs_to_kill, instance=self.instance)

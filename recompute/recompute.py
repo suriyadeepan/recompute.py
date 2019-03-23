@@ -1,5 +1,6 @@
-from recompute.config import Processor, Login
-from recompute.config import generate_config_file
+from recompute.config import ConfigManager
+from recompute.instance import InstanceManager
+from recompute.instance import Instance
 from recompute.remote import Remote
 from recompute.bundle import Bundle
 from recompute.remote import VOID_CACHE
@@ -27,7 +28,7 @@ parser.add_argument('--remote_home', nargs='?', default='/home/oni/projects/',
     help='remote projects/ directory')
 parser.add_argument('--urls', nargs='?', default='',
     help='comma-separated list of URLs')
-parser.add_argument('--login', nargs='?', default='',
+parser.add_argument('--instance', nargs='?', default='',
     help='[username@host] config.remotepass is used')
 parser.add_argument('--filter', nargs='?', default='',
     help='keyword to filter log')
@@ -37,7 +38,7 @@ parser.add_argument('--idx', nargs='?', default='',
     help='process idx to operate on')
 parser.add_argument('--name', nargs='?', default='runner',
     help='name of process')
-parser.add_argument('--instance', nargs='?', default=0,
+parser.add_argument('--instance_idx', nargs='?', default=0,
     help='remote instance to use')
 parser.add_argument('--force', default=False, action='store_true',
     help='clear cache')
@@ -52,20 +53,21 @@ args = parser.parse_args()
 
 
 def init():
-  # get processor instance
-  proc = Processor()
-  # create default login
-  instance = int(args.instance) if args.instance else None
-  login = proc.get_instance(instance)
+  # get configuration manager
+  confman = ConfigManager()
+  # build instance manager
+  instanceman = InstanceManager(confman)
+  # create default instance
+  instance_idx = int(args.instance_idx) if args.instance_idx else None
+  instance = instanceman.get(instance_idx)
   # create bundle
   bundle = Bundle()
   # create remote instance handle
-  void = Remote(login, bundle, remote_home=args.remote_home)
+  void = Remote(instance, bundle, remote_home=args.remote_home)
   # sync files
   void.rsync()  # TODO : make sync optional -u
   # install from requirements.txt
   void.install_deps()  # TODO : make this optional -i
-
   return void
 
 
@@ -85,15 +87,15 @@ def create_void():
 def main():  # package entry point
 
   """ Boilerplate """
-  # create a Processor instance
-  proc = Processor()
-  # load config from file
-  config = proc.config
+  # get configuration manager
+  confman = ConfigManager()
+  # build instance manager
+  instanceman = InstanceManager(confman)
 
   # ------------ conf ------------ #
   if args.mode == 'conf':  # generate config file
     """ Mode : Generate configuration file """
-    config = generate_config_file()
+    config = confman.generate(force=args.force)
     if not config:
       logger.info('config exists; use --force to overwrite it')
 
@@ -101,21 +103,21 @@ def main():  # package entry point
   elif args.mode == 'sshadd':  # add remote instance
     """ Mode : Add remote instance to config """
     try:
-      assert args.login  # make sure user@host is given as input
+      assert args.instance  # make sure user@host is given as input
       # get password from user
       password = getpass('Password:')
-      # . create Login instance
+      # . create Instance instance
       # .. parse user@host
-      login = Login(password=password).resolve(args.login)
-      # add login to config
-      proc.add_instance(login)
+      instance = Instance(password=password).resolve_str(args.instance)
+      # add instance to config
+      instanceman.add_instance(instance)
     except AssertionError:
-      logger.error('Invalid/Empty login')
+      logger.error('Invalid/Empty instance')
 
   # ------------ probe ----------- #
   elif args.mode == 'probe':  # probe remote machines
     """ Mode : Probe remote machines """
-    print(proc.probe(force=args.force))
+    print(instanceman.probe(force=args.force))
 
   # ------------ data ------------ #
   elif args.mode == 'data':

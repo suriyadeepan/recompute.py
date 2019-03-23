@@ -17,8 +17,8 @@ def is_process_alive(pid):
     return
 
 
-def is_remote_process_alive(pid, login):
-  _, output = remote_execute(cmd.PROCESS_PID_LINUX.format(pid=pid), login)
+def is_remote_process_alive(pid, instance):
+  _, output = remote_execute(cmd.PROCESS_PID_LINUX.format(pid=pid), instance)
   return str(pid) in output
 
 
@@ -27,9 +27,22 @@ def kill_process(pids):
     os.kill(pid, signal.SIGTERM)
 
 
-def kill_remote_process(pids, login):
-  _, output = remote_execute(cmd.kill_procs(pids), login)
+def kill_remote_process(pids, instance):
+  _, output = remote_execute(cmd.kill_procs(pids), instance)
   return output
+
+
+def fetch_stderr(cmdstr):
+  # create process
+  process = subprocess.Popen([cmdstr, '...'],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      shell=True)
+  stdout, stderr = process.communicate()
+  logger.info(cmdstr)
+  # read from stderr
+  logger.info('ERR : {}'.format(stderr.decode('utf-8')))
+  return stderr.decode('utf-8')
 
 
 def execute(cmdstr, run_async=False):
@@ -56,16 +69,16 @@ def async_execute(cmdstr):
   return execute(cmdstr, run_async=True)
 
 
-def remote_execute(cmdstr, login, bypass_subprocess=False):
-  _header = cmd.SSH_HEADER.format(password=login.password)
+def remote_execute(cmdstr, instance, bypass_subprocess=False):
+  _header = cmd.SSH_HEADER.format(password=instance.password)
   _body = cmd.SSH_EXEC.format(
-      username=login.username,
-      host=login.host, cmd=cmdstr
+      username=instance.username,
+      host=instance.host, cmd=cmdstr
       )
   if bypass_subprocess:
     _body = cmd.SSH_EXEC_PSEUDO_TERMINAL.format(
-          username=login.username,
-          host=login.host, cmd=cmdstr
+          username=instance.username,
+          host=instance.host, cmd=cmdstr
           )
     os.system(' '.join([_header, _body]))
     return None, None
@@ -73,11 +86,11 @@ def remote_execute(cmdstr, login, bypass_subprocess=False):
   return execute(' '.join([_header, _body]))
 
 
-def remote_async_execute(cmdstr, login, logfile='/dev/null'):
-  _header = cmd.SSH_HEADER.format(password=login.password)
+def remote_async_execute(cmdstr, instance, logfile='/dev/null'):
+  _header = cmd.SSH_HEADER.format(password=instance.password)
   _body = cmd.SSH_EXEC_ASYNC.format(
-      username=login.username,
-      host=login.host, cmd=cmdstr,
+      username=instance.username,
+      host=instance.host, cmd=cmdstr,
       logfile=logfile
       )
   _, output = execute(' '.join([_header, _body]))

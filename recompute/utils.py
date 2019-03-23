@@ -31,3 +31,8 @@ def parse_ps_results(stdout):
       for line in stdout.split('\n')
       if line.split(' ')[0].strip()
       ]
+
+def parse_free_results(stdout):
+  line = stdout.split('\n')[1]
+  assert 'Mem:' in line
+  return int(line.split()[3])
