@@ -6,3 +6,5 @@ dist/
 __pycache__
 *.log
 .recompute
+.cache/
+*.runner
