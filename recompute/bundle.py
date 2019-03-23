@@ -1,12 +1,11 @@
 import os
-import logging
 
-from recompute.process import execute
-from recompute.config import LOCAL_CONFIG_DIR
+from recompute import process
+from recompute import cmd
+from recompute import utils
 
 # setup logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = utils.get_logger(__name__)
 
 # RSYNC DB
 RSYNC_DB = '.recompute/rsync.db'
@@ -24,8 +23,6 @@ class Bundle(object):
     self.name = name if name else self.path.split('/')[-1]
     # local db
     self.db = RSYNC_DB
-    # setup local conf
-    self.init_local_conf()
     # init include/exclude files
     self.init_include_exclude()
     # update bundle dependencies
@@ -37,18 +34,13 @@ class Bundle(object):
     self.files = list(self.get_local_deps())
     # add INCLUDE; remote EXCLUDE
     self.files = self.inclusion_exclusion()
-    logger.debug(' '.join(self.files))
+    logger.info(' '.join(self.files))
     # create a file containing list of dependencies
     self.populate_requirements()
     # get a list of dependencies (python packages)
     self.requirements = self.get_requirements()
     # create a file containting list of local dependencies
     self.populate_local_deps()
-
-  def init_local_conf(self):
-    # create local conf directory if it doesn't exist
-    if not os.path.exists(LOCAL_CONFIG_DIR):
-      os.makedirs(LOCAL_CONFIG_DIR)
 
   def init_include_exclude(self):
     if not os.path.exists(INCLUDE):
@@ -76,22 +68,23 @@ class Bundle(object):
     """ Write local dependencies to file """
     with open(self.db, 'w') as db:
       for filename in self.files:
-        logger.debug(filename)
+        logger.info(filename)
         db.write(filename)
         db.write('\n')
 
   def populate_requirements(self):
     # . get a list of pip packages
     # .. write to requirements.txt
-    assert execute('pipreqs . --force')
-    # add pytest to requirements.txt
-    with open(REQS, 'a') as f_req:
-      f_req.write('\npytest')
+    assert process.execute(
+        cmd.REDIRECT_STDOUT_NULL.format(command=cmd.PIP_REQS)
+        )
+    # with open(REQS, 'a') as f_req:
+    #   f_req.write('\npytest')
 
   def get_requirements(self):
     reqs = [ line.replace('\n', '')
         for line in open(REQS).readlines()
-        if line.replace('\n', '')
+        if line.replace('\n', '').strip()
         ]
-    logger.debug(reqs)
+    logger.info(reqs)
     return reqs

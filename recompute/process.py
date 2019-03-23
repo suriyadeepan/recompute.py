@@ -6,7 +6,6 @@ import signal
 from recompute import cmd
 
 # setup logger
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -61,8 +60,12 @@ def execute(cmdstr, run_async=False):
     output_str = output_bytes.decode('utf-8')
     logger.info(output_str)
     return process.pid, output_str
+  except KeyboardInterrupt:
+    logger.error('Keyboard Interrupt')
+    return None, None
   except:
-    logger.error('\tExecution Failed!')
+    logger.error('Execution Failed!')
+    return None, None
 
 
 def async_execute(cmdstr):

@@ -1,10 +1,53 @@
+from prettytable import PrettyTable
+
 import os
 import logging
 import random
 
-# setup logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# setup local configuration
+LOCAL_CONFIG_DIR = '.recompute'
+if not os.path.exists(LOCAL_CONFIG_DIR):
+  os.makedirs(LOCAL_CONFIG_DIR)
+# redirect log to
+LOG = '.recompute/log'
+LOG_OVERFLOW = 2000
+
+
+def get_logger(name, level=logging.INFO):
+  # . if log file doesn't exist
+  # .. or if it overflows
+  if not os.path.exists(LOG) or len(open(LOG).readlines()) > LOG_OVERFLOW:
+    open(LOG, 'w').close()  # create anew
+  logging.basicConfig(filename=LOG, filemode='a', level=level)
+  return logging.getLogger(name)
+
+
+logger = get_logger(__name__)
+
+
+def parse_log(log):
+  return log  # TODO : clean it up
+
+
+def tabulate_processes(processes):
+  table = PrettyTable()
+  table.field_names = [ "Index", "Name", "PID" ]
+  # fabricate 0th row
+  table.add_row((0, 'all', '*'))
+  for idx, (name, pid) in enumerate(processes):
+    table.add_row((idx + 1, name, pid))
+  return table
+
+
+def tabulate_instances(instances):
+  # create pretty table
+  table = PrettyTable()
+  # add fields
+  table.field_names = [ "Machine", "Status", "GPU (MB)", "Disk (MB)" ]
+  # add rows
+  for instance, values in instances.items():
+    table.add_row(values)
+  return table
 
 
 def resolve_relative_path(filename, path):
@@ -28,9 +71,12 @@ def chain_commands(commands):
 
 
 def parse_ps_results(stdout):
-  return [ int(line.split(' ')[0].strip())
-      for line in stdout.split('\n')
-      if line.split(' ')[0].strip()
+  # ps returns nothing
+  if not stdout.replace('\n', '').strip():
+    return []
+  # ps returns something
+  return [ int(line.split()[0]) for line in stdout.split('\n')
+      if line.replace('\n', '').strip()
       ]
 
 

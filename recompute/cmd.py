@@ -1,3 +1,4 @@
+PIP_REQS = 'pipreqs . --force'
 GPU_FREE_MEMORY = 'nvidia-smi \
     --query-gpu=memory.free \
     --format=csv,nounits,noheader'
@@ -30,7 +31,7 @@ LAST_MODIFIED = 'date -r {filename}'
 CD = 'cd {path}'
 TRAP = 'trap "kill 0" SIGINT'
 REDIRECT_STDOUT = '{command} > {logfile} 2>&1'
-REDIRECT_STDOUT_NULL = '{command} > {/dev/null} 2>&1'
+REDIRECT_STDOUT_NULL = '{command} > /dev/null 2>&1'
 WAIT = 'wait'
 EXEC_RUNNER = 'bash {runner}'
 TRAP_INT_TERM = 'trap "exit" INT TERM'
@@ -47,4 +48,6 @@ def make_traps():
 
 
 def kill_procs(pids):
-  return ' '.join( ['kill'] + [ str(pid) for pid in pids ] )
+  return REDIRECT_STDOUT_NULL.format(
+      command=' '.join( ['kill'] + [ str(pid) for pid in pids ] )
+      )

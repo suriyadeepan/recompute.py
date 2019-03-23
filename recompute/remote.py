@@ -1,20 +1,14 @@
-import pickle
+from __future__ import print_function
 import time
+import pickle
 import os
 
-import logging
-
 from recompute import cmd
-from recompute.process import execute, async_execute
-from recompute.process import remote_execute, remote_async_execute
 from recompute import process
-
 from recompute import utils
 
 # setup logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+logger = utils.get_logger(__name__)
 # void cache
 VOID_CACHE = '.recompute/void'
 
@@ -63,7 +57,7 @@ class Remote(object):  # think of a bubble over the bundle
         self.logfile.split('/')[-1]
         )
 
-    # list spawned proceses
+    # list spawned processes
     self.processes = [] if not cache else cache['processes']
     # cache void
     self.cache_()
@@ -114,11 +108,11 @@ class Remote(object):  # think of a bubble over the bundle
     # execute make directory command from local machine
     mkcmd = self.make_mkcmd()
     logger.info(mkcmd)
-    assert execute(mkcmd)
+    assert process.execute(mkcmd)
     # make data/ directory
     remote_data_ = self.make_mkcmd(self.remote_data)
     logger.info(remote_data_)
-    assert execute(remote_data_)
+    assert process.execute(remote_data_)
 
   def rsync(self, update=False):
     """ Rsync files between local and remote systems """
@@ -129,7 +123,7 @@ class Remote(object):  # think of a bubble over the bundle
     # execute rsync
     rsync_cmd = self.make_rsync_cmd()
     logger.info(rsync_cmd)
-    return execute(rsync_cmd)
+    return process.execute(rsync_cmd)
 
   def async_execute(self, commands, logfile=None, name='runner'):
     return self.execute(commands, run_async=True, log=True, logfile=logfile, name=name)
@@ -147,7 +141,7 @@ class Remote(object):  # think of a bubble over the bundle
     # get absolute path of runner
     runner_abs_path = os.path.join(self.remote_dir, runner)
     # execute runner in remote machine
-    exec_fn = remote_async_execute if run_async else remote_execute
+    exec_fn = process.remote_async_execute if run_async else process.remote_execute
     pid, output = exec_fn(cmd.EXEC_RUNNER.format(runner=runner_abs_path), instance=self.instance)
 
     # add pid to processes
@@ -183,7 +177,7 @@ class Remote(object):  # think of a bubble over the bundle
         )
     copy_cmd = ' '.join([_header, _body])
     # local execute scp
-    execute(copy_cmd)
+    process.execute(copy_cmd)
 
   def get_file_from_remote(self, remotepath, localpath=None):
     """ Copy file to local machine """
@@ -199,15 +193,15 @@ class Remote(object):  # think of a bubble over the bundle
         )
     copy_cmd = ' '.join([_header, _body])
     # execute scp command
-    execute(copy_cmd)
+    process.execute(copy_cmd)
 
-  def get_remote_log(self, keyword=None, print_log=True):
+  def get_remote_log(self, keyword=None):
     """ Copy log file in remote system to local machine """
     # copy to local
     self.get_file_from_remote(self.logfile, self.bundle.path)  # '.'
-    return self.get_local_log(keyword, print_log)
+    return self.get_local_log(keyword)
 
-  def get_local_log(self, keyword=None, print_log=False):
+  def get_local_log(self, keyword=None):
     """ Read local log file """
     # check if local log file exists
     if not os.path.exists(self.local_logfile):
@@ -219,9 +213,7 @@ class Remote(object):  # think of a bubble over the bundle
     if keyword:    # if keyword is given
       log = '\n'.join([ line for line in log.split('\n') if keyword in line])
 
-    if print_log:  # do we print it?
-      logger.info('\n{}'.format(log))
-
+    logger.info('\n{}'.format(log))
     return log
 
   def loop_get_remote_log(self, delay, keyword=None):
@@ -229,14 +221,19 @@ class Remote(object):  # think of a bubble over the bundle
     try:
       while True:  # tis a loop, my liege.
         # . get local log
-        local_log = self.get_local_log(print_log=False)
+        local_log = self.get_local_log()
         # .. get remote log
-        remote_log = self.get_remote_log(print_log=False)
+        remote_log = self.get_remote_log()
         # ... compare
         diff = remote_log.replace(local_log, '')
+
         # print the diff
         if diff.strip():  # if there is a difference
           logger.info('\n{}'.format(diff))
+          print(diff, end='')
+
+        if 'EOF' in diff:  # has the execution ended?
+          break
         # and now we wait
         time.sleep(delay)
     except KeyboardInterrupt:
@@ -251,12 +248,14 @@ class Remote(object):  # think of a bubble over the bundle
     self.install(self.bundle.get_requirements())
 
   def install(self, packages):
+    if len(packages) == 0:  # check if packages list is empty
+      logger.info('No pypi packages required for execution')
+      return
      # make pip-install command
     pip_install_cmd = 'python3 -m pip install --user {}'.format(
         ' '.join(packages)
         )
     logger.info('\tInstall dependencies\n\t{}'.format(pip_install_cmd))
-
     # remote execute cmd
     logger.info('\n\t{}'.format(self.execute_command(pip_install_cmd)))
 
@@ -302,19 +301,25 @@ class Remote(object):  # think of a bubble over the bundle
           )
         )
 
-  def start_notebook(self, run_async=False, name='jupyter notebook', force=False):
+  def start_notebook(self, run_async=False, name='jupyter:{}', force=False):
     """ Create and connect to remote notebook server """
     # install jupyter notebook
-    # self.install(['jupyter'])
+    # self.install(['jupyter'])  # TODO : what if notebook isn't installed ?
     # choose a port number
     server_port_num = utils.rand_server_port()
+    # set name=name.format(server_port_num))
+    notebook_server_name = name.format(server_port_num)
     # start jupyter server
     commands = [ cmd.JUPYTER_SERVER.format(port_num=server_port_num) ]
-    pid, output = self.async_execute(commands, logfile='/dev/null', name=name)
+    notebook_server_pid, output = self.async_execute(commands,
+        logfile='/dev/null',        # don't need no log
+        name=notebook_server_name)  # name it, so we can track it
 
-    logger.info('\tStarted notebook server in remote machine :{}'.format(
-      server_port_num)
-      )
+    logger.info('\tStarted notebook server in remote machine :{}'.format(server_port_num))
+    print('{username}@{host}:{port}'.format(
+      username=self.instance.username,
+      host=self.instance.host,
+      port=server_port_num))
 
     # . choose a client port number
     # .. build notebook client command
@@ -329,14 +334,32 @@ class Remote(object):  # think of a bubble over the bundle
 
     logger.info('Starting local notebook ')
     logger.info('\thttp://localhost:{}/tree'.format(client_port_num))
+    print('http://localhost:{port}/tree'.format(port=client_port_num))
 
     if run_async:
-      pid, output = async_execute(cmd_local)
+      print('Async Execution not implemented yet!')  # TODO : add issue handle here
+      # pid, output = process.async_execute(cmd_local)
+      # return
 
     # connect to notebook server
-    return execute(cmd_local)
+    pid, output = process.execute(cmd_local)
 
-  def list_processes(self, print_log=False, force=False):
+    if not pid and not output:  # keyboard interrupt
+      logger.info('YOU quit jupyter notebook')
+      # ----- kill server -----
+      # . list processes
+      procs = self.list_processes()
+      # .. find jupyter notebook process
+      name, pid = procs[-1]  # pretty sure it's the last added process
+      # ... make sure name and pid check out
+      assert pid == notebook_server_pid
+      assert name == notebook_server_name
+      # .... get handle
+      notebook_server_idx = len(procs) - 1
+      # ..... kill it
+    self.kill(notebook_server_idx)  # if its 0, no problem!
+
+  def list_processes(self, force=False):
     if force:
       # get list of processes
       command = ' '.join([
@@ -345,23 +368,24 @@ class Remote(object):  # think of a bubble over the bundle
           cmd=cmd.PROCESS_LIST_LINUX.format(username=self.instance.username)
           )
         ])
-      pid, output = execute(command)
+      pid, output = process.execute(command)
       pids = utils.parse_ps_results(output)
-      self.processes = [ (name, pid) for name, pid in self.processes if pid in pids ]
+      known_pids = [ proc[-1] for proc in self.processes ]
+      self.processes = [ (name, pid) for name, pid in self.processes
+          if pid in pids ]
+      self.processes.extend([ ('zombie/spawn', pid) for pid in pids
+        if pid not in known_pids ])
       # update cache
       self.cache_()
 
-    if print_log:
-      print('[ *] {:>20}'.format('all'))
-      for i, (name, pid) in enumerate(self.processes):
-        print('[{:>2}] {:>20} {:>8}'.format(i + 1, name, pid))
-
     logger.info(self.processes)
-    return [ proc[-1] for proc in self.processes ]
+    return self.processes
 
   def kill(self, idx, force=False):
-    pids = self.list_processes(force=force)
-    if len(pids) > 0:
-      procs_to_kill = pids if idx == 0 else [pids[idx - 1]]
+    processes = self.list_processes(force=force)
+    if len(processes) > 0:
+      procs_to_kill = processes if idx == 0 else [processes[idx - 1]]
       if len(procs_to_kill) > 0:
-        process.kill_remote_process(procs_to_kill, instance=self.instance)
+        process.kill_remote_process(
+            [ p[-1] for p in procs_to_kill ],  # separate pid
+            instance=self.instance)

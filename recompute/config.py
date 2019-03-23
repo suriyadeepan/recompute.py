@@ -1,18 +1,12 @@
 import configparser
-import logging
 import os
 
-import pickle
-from recompute import cmd
-
-from recompute.process import remote_execute
+from recompute import utils
 
 # configuration
 CONFIG_FILE = os.path.join(os.environ['HOME'], '.recompute.conf')
-LOCAL_CONFIG_DIR = '.recompute'
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# setup logger
+logger = utils.get_logger(__name__)
 
 
 class ConfigManager(object):
@@ -83,7 +77,7 @@ class ConfigManager(object):
       if 'instance ' in sec ])
     # add new instance section to config file
     self.config['instance {}'.format(idx)] = {
-        'user' : instance.username,
+        'username' : instance.username,
         'host' : instance.host,
         'password' : instance.password
         }

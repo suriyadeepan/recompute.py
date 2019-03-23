@@ -78,14 +78,14 @@ def test_remote_home(cremote):
 
 def test_list_processes(cremote):
   pid, output = cremote.async_execute(['sleep 60'])
-  assert len(cremote.list_processes(print_log=True, force=True)) > 0
+  assert len(cremote.list_processes(force=True)) > 0
 
 
 def test_kill_all(cremote):
   from time import sleep
   cremote.kill(0, force=True)
   sleep(10)
-  assert len(cremote.list_processes(print_log=True, force=True)) == 0
+  assert len(cremote.list_processes(force=True)) == 0
 
 
 def test_push(cremote):

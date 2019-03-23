@@ -1,6 +1,7 @@
+from recompute import utils
+from recompute.instance import Instance
 from recompute.config import ConfigManager
 from recompute.instance import InstanceManager
-from recompute.instance import Instance
 from recompute.remote import Remote
 from recompute.bundle import Bundle
 from recompute.remote import VOID_CACHE
@@ -12,7 +13,6 @@ import logging
 import os
 
 # setup logger
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # parse command-line arguments
@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(
     )
 # NOTE : ffs! write a descriptive help for `mode`
 parser.add_argument('mode', type=str,
-    help='(init/sync/async/rsync/install/log/list/ssh/notebook/conf/probe/data/pull/push,sshadd) recompute mode')
+    help='(init/sync/async/rsync/install/log/list/kill/purgessh/notebook/conf/probe/data/pull/push/sshadd) recompute mode')
 parser.add_argument('cmd', nargs='?', default='None',
     help='command to run in remote system')
 parser.add_argument('--remote_home', nargs='?', default='/home/oni/projects/',
@@ -182,22 +182,38 @@ def main():  # package entry point
       """ Mode : Copy log from remote machine in a loop """
       void.loop_get_remote_log(int(args.loop), args.filter)
     else:  # --------------- no loop ---------- #
-      void.get_remote_log(args.filter, print_log=True)
+      log = void.get_remote_log(args.filter)
+      print(utils.parse_log(log))
 
   # ------------ list ------------ #
-  elif args.mode == 'list':  # list of proceses
+  elif args.mode == 'list':  # list of processes
     """ Mode : List remote processes """
-    create_void().list_processes(print_log=True, force=True)
+    print(utils.tabulate_processes(
+        create_void().list_processes(force=True)
+        ))
 
   # ------------ kill ------------ #
   elif args.mode == 'kill':  # kill process
     """ Mode : Interactive kill """
     void = create_void()
-    procs = void.list_processes(print_log=True, force=True)
+    # print table of processes
+    print(utils.tabulate_processes(
+      void.list_processes(force=True)
+      ))
+    # resolve index of proc
     idx = int(args.idx) if args.idx else None
     if not args.idx:
-      idx = int(input('kill idx [0-{}] : '.format(len(procs))))
+      # get index from user
+      try:
+        idx = int(input('Process to kill (index) : '))
+      except KeyboardInterrupt:
+        exit()  # the user chikened out!
+    # kill process
     void.kill(idx)
+
+  # ------------ purge ----------- #
+  elif args.mode == 'purge':  # kill them all
+    create_void().kill(0)
 
   # ------------ ssh ------------- #
   elif args.mode == 'ssh':  # start an ssh session

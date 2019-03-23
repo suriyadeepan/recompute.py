@@ -20,9 +20,9 @@ def test_init_include_exclude(bundle):
 
 def test_inclusion_exclusion(bundle):
   from recompute.bundle import INCLUDE, EXCLUDE
-  with open(INCLUDE, 'a') as f:
+  with open(INCLUDE, 'w') as f:
     f.write('README.md')
-  with open(EXCLUDE, 'a') as f:
+  with open(EXCLUDE, 'w') as f:
     f.write('recompute/utils.py')
   bundle.update_dependencies()
   assert 'README.md' in bundle.files

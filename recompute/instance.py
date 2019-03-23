@@ -1,16 +1,15 @@
-from prettytable import PrettyTable
-import logging
-
 from recompute import process
 from recompute import cmd
 from recompute import utils
 
+import logging
+
 import pickle
 import os
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# setup logger
+logger = utils.get_logger(__name__)
+# table cache
 PROBE_CACHE = '.recompute/table'
 
 
@@ -81,7 +80,7 @@ class InstanceManager(object):
   def get_active(self):
     return [ instance for instance in self.get_all()
         if self.is_active(instance) ]
- 
+
   def fetch(self):
     # get all instances
     for instance in self.get_all():
@@ -90,19 +89,8 @@ class InstanceManager(object):
 
   def probe(self, force=False):
 
-    def dict_to_table(instances):
-      # create pretty table
-      table = PrettyTable()
-      # add fields
-      table.field_names = [ "Machine", "Status", "GPU (MB)", "Disk (MB)" ]
-      # add rows
-      for instance, values in instances.items():
-        table.add_row(values)
-
-      return table
-
     if not force and os.path.exists(PROBE_CACHE):
-      return dict_to_table(pickle.load(open(PROBE_CACHE, 'rb')))
+      return utils.tabulate_instances(pickle.load(open(PROBE_CACHE, 'rb')))
 
     # init dictionary of instances
     instances = {}
@@ -133,4 +121,4 @@ class InstanceManager(object):
         continue
     # cache table
     pickle.dump(instances, open(PROBE_CACHE, 'wb'))
-    return dict_to_table(instances)
+    return utils.tabulate_instances(instances)
