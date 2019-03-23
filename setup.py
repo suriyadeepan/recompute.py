@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="recompute",
-    version="0.0.7",
+    version="0.9.1",
     author="Suriyadeepan Ramamoorthy",
     author_email="suriyadeepan.r@gmail.com",
     description="Remote Computation Framework",
@@ -19,6 +19,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     entry_points = {
-      'console_scripts' : [ 'recompute=recompute.recompute:main' ],
+      'console_scripts' : [ 're=recompute.recompute:main' ],
       },
 )

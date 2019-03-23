@@ -1,41 +1,11 @@
 """recompute.py
 
-A sweet tool for Remote Execution. This is the high-level user interface. The user is exposed to the program through this module. We bombard the user with a suite of features that enable comfortable execution of code in remote machines. Each feature, named `mode` here, corresponds to a particular operation. Features include,
-
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| Mode     | Description                                         | Options               | Example                    |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| init     | Setup current directory for remote execution        | --instance_idx        | $re init                   |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| rsync    | Use rsync to synchronize local files with remote    | --force               | $re rsync                  |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| install  | Install pypi packages in requirements.txt in remote | --force               | $re install                |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| sync     | Synchronous execution of "args.cmd" in remote       | cmd, --force, --rsync | $re sync "python3 x.py"    |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| async    | Asynchronous execution of "args.cmd" in remote      | cmd, --force, --rsync | $re async "python3 x.py"   |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| log      | Fetch log from remote machine                       | --loop, --filter      | $re log                    |
-|          |                                                     |                       | $re log --loop=2           |
-|          |                                                     |                       | $re log --filter="pattern" |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| list     | List out processes alive in remote machine          | --force               | $re list                   |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| kill     | Kill a process by index                             | --idx                 | $re kill                   |
-|          |                                                     |                       | $re kill --idx=1           |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| purge    | Kill all remote process that are alive              | None                  | $re purge                  |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| ssh      | Create an ssh session in remote machine             | None                  | $re ssh                    |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| notebook | Create jupyter notebook in remote machine           | --run_async           | $re notebook               |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| push     | Upload file to remote machine                       | cmd                   | $re push "x.py y/"         |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| pull     | Download file from remote machine                   | cmd                   | $re pull "y/z.py ."        |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
-| data     | Download data from web into data/ folder of remote  | cmd                   | $re data "url1 url2 url3"  |
-+----------+-----------------------------------------------------+-----------------------+----------------------------+
+A sweet tool for Remote Execution.
+This is the high-level user interface.
+The user is exposed to the program through this module.
+We bombard the user with a suite of features that enable comfortable execution of code in remote machines.
+Each feature, named `mode` here, corresponds to a particular operation.
+Scroll down for a table of available commands, options and how to use them.
 
 """
 from recompute import utils
@@ -55,13 +25,59 @@ import os
 # setup logger
 logger = logging.getLogger(__name__)
 
+# man page
+MAN_DOCU = """
+                         _ __   ___ 
+                        | '__| / _ \\
+                        | |   |  __/
+                        |_|    \___|
+
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| Mode     | Description                                         | Options               | Example                             |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| init     | Setup current directory for remote execution        | --instance_idx        | $re init                            |
+|          |                                                     |                       | $re init --instance_idx="user@host" |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| rsync    | Use rsync to synchronize local files with remote    | --force               | $re rsync                           |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| install  | Install pypi packages in requirements.txt in remote | --force               | $re install                         |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| sync     | Synchronous execution of "args.cmd" in remote       | cmd, --force, --rsync | $re sync "python3 x.py"             |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| async    | Asynchronous execution of "args.cmd" in remote      | cmd, --force, --rsync | $re async "python3 x.py"            |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| log      | Fetch log from remote machine                       | --loop, --filter      | $re log                             |
+|          |                                                     |                       | $re log --loop=2                    |
+|          |                                                     |                       | $re log --filter="pattern"          |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| list     | List out processes alive in remote machine          | --force               | $re list                            |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| kill     | Kill a process by index                             | --idx                 | $re kill                            |
+|          |                                                     |                       | $re kill --idx=1                    |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| purge    | Kill all remote process that are alive              | None                  | $re purge                           |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| ssh      | Create an ssh session in remote machine             | None                  | $re ssh                             |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| notebook | Create jupyter notebook in remote machine           | --run_async           | $re notebook                        |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| push     | Upload file to remote machine                       | cmd                   | $re push "x.py y/"                  |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| pull     | Download file from remote machine                   | cmd                   | $re pull "y/z.py ."                 |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| data     | Download data from web into data/ folder of remote  | cmd                   | $re data "url1 url2 url3"           |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| man      | Show this man page                                  | None                  | $re man                             |
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+"""
+
 # parse command-line arguments
 parser = argparse.ArgumentParser(
     description='recompute.py -- A sweet tool for remote computation'
     )
 # NOTE : ffs! write a descriptive help for `mode`
 parser.add_argument('mode', type=str,
-    help='(init/sync/async/rsync/install/log/list/kill/purgessh/notebook/conf/probe/data/pull/push/sshadd) recompute mode')
+    help='(init/sync/async/rsync/install/log/list/kill/purgessh/notebook/conf/probe/data/pull/push/sshadd/man) recompute mode')
 parser.add_argument('cmd', nargs='?', default='None',
     help='command to run in remote system')
 parser.add_argument('--remote_home', nargs='?', default='/home/oni/projects/',
@@ -132,8 +148,14 @@ def main():  # package entry point
   # build instance manager
   instanceman = InstanceManager(confman)
 
+  # ------------ man ------------- #
+  if args.mode == 'man':
+    """ Mode : Show man page """
+    print(MAN_DOCU)
+    exit()
+
   # ------------ conf ------------ #
-  if args.mode == 'conf':  # generate config file
+  elif args.mode == 'conf':  # generate config file
     """ Mode : Generate configuration file """
     config = confman.generate(force=args.force)
     if not config:
