@@ -109,6 +109,19 @@ args = parser.parse_args()
 
 
 def init():
+  """Setup current directory for remote execution
+
+  * Setup remote instance for execution
+  * Create local configuration files
+  * Bundle up local repository
+  * Sync files
+  * Install Dependencies
+
+  Returns
+  -------
+  remote.Remote
+    An instance of Remote class
+  """
   # get configuration manager
   confman = ConfigManager()
   # build instance manager
@@ -128,15 +141,17 @@ def init():
 
 
 def cache_exists():
+  """Does cache exist?"""
   return os.path.exists(VOID_CACHE)
 
 
 def get_remote():
+  """Get an instance of Remote from cache or create anew"""
   if cache_exists():
-    logger.info('cache exists')
+    logger.info('Cache exists')
     return Remote()
 
-  logger.info('cache doesn\'t exist')
+  logger.info('Cache doesn\'t exist')
   return init()
 
 
