@@ -1,6 +1,8 @@
-![recompute logo](banner.png)
+<p align="center"> 
+<img src="banner.png" width="500">
+</p>
 
---------------------------------------------------------------------------------
+---
 
 A sweet tool for Remote Computation
 
