@@ -1,5 +1,5 @@
 <p align="center"> 
-<img src="banner.png" width="500">
+<img src="https://raw.githubusercontent.com/suriyadeepan/recompute.py/master/banner.png" width="500">
 </p>
 
 ---
