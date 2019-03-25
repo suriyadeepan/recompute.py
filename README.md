@@ -1,7 +1,8 @@
-# recompute.py
+![recompute logo](banner.png)
+
+--------------------------------------------------------------------------------
 
 A sweet tool for Remote Computation
-
 
 
 Some jobs must be assigned to powerful machines equipped with GPUs. Training a language model on 60 million tamil news articles. Some jobs could be run in my macbook. Locally. Quickly. Bayesian Logistic Regression on IRIS data. Not every job fits nicely into these two categories. There are jobs that take 4 to 7 minutes to run in my macbook. I let them run. Because getting it to run in a remote machine is just too much work. I would rather waste 4-7 minutes? Oh you'd do something else during these 4-7 minutes. Lets not kid ourselves. We are bad at multi-tasking because we are not wired for that. [GTD](https://www.youtube.com/watch?v=CHxhjDPKfbY) cannot transcend biological limitations.
