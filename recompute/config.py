@@ -136,7 +136,11 @@ class ConfigManager(object):
     """
     if idx is None:
       idx = int(self.config['general']['instance'])
-    return self.config['instance {}'.format(idx)]
+    try:
+      self.config['instance {}'.format(idx)], 'No such instance in config'
+      return self.config['instance {}'.format(idx)]
+    except KeyError:
+      print('There is no "instance {}" section in config'.format(idx))
 
   def get_default_instance(self):
     """Return default instance section from config file
