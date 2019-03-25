@@ -36,11 +36,11 @@ MAN_DOCU = """
 | Mode     | Description                                         | Options               | Example                             |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | init     | Setup current directory for remote execution        | --instance-idx        | $re init                            |
-|          |                                                     |                       | $re init --instance_idx="user@host" |
+|          |                                                     |                       | $re init --instance-idx=1           |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | rsync    | Use rsync to synchronize local files with remote    | --force               | $re rsync                           |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
-| sshadd   | Add a new instance to config                        | --instance            | $re sshadd --instance_idx="usr@host"|
+| sshadd   | Add a new instance to config                        | --instance            | $re sshadd --instance="usr@host"    |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | install  | Install pypi packages in requirements.txt in remote | cmd, --force          | $re install                         |
 |          |                                                     |                       | $re install "pytorch tqdm"          |

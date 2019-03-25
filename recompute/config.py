@@ -84,7 +84,7 @@ class ConfigManager(object):
     config = configparser.ConfigParser()
     config.add_section('general')         # add general section
     config.set('general', 'instance', '0')  # default instance
-    config.set('general', 'remote_home', '~/projects/')  # remote home folder
+    config.set('general', 'remote_home', 'projects/')  # remote home folder
 
     # resolve config file
     configfile = configfile if configfile else self.configfile
