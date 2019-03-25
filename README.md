@@ -4,112 +4,142 @@
 
 ---
 
-A sweet tool for Remote Computation
+A sweet tool for Remote Execution.
 
 
-Some jobs must be assigned to powerful machines equipped with GPUs. Training a language model on 60 million tamil news articles. Some jobs could be run in my macbook. Locally. Quickly. Bayesian Logistic Regression on IRIS data. Not every job fits nicely into these two categories. There are jobs that take 4 to 7 minutes to run in my macbook. I let them run. Because getting it to run in a remote machine is just too much work. I would rather waste 4-7 minutes? Oh you'd do something else during these 4-7 minutes. Lets not kid ourselves. We are bad at multi-tasking because we are not wired for that. [GTD](https://www.youtube.com/watch?v=CHxhjDPKfbY) cannot transcend biological limitations.
+What is the chillest way one can train models in remote machines? 
 
-What would [Bill Murray](https://plato.stanford.edu/entries/nietzsche/#EterRecuSame) do?
+- Do not worry about environment setup (dependencies)
+- Don't bother choosing an instance to run on
+- No more bash scripts to copy files back and forth
 
-Why is running code in remote machine so painful? If the jobs are all similar (python, machine learning), can we not automate this process? What is the process anyway? 
+**re** provides a suite of features that empowers the user to focus on the experiments without having to worry about boring details listed above.
 
-- Copy *necessary* code to remote machine `rsync`
-- Set up dependencies `pip install`
-- Download datasets; place them in the right directory `data/`
-- Run code in remote
-- Copy binaries generated `bin/`
+- Almost zero conf
+- Abstract away boring repetitive details
+- Ease of execution
 
-I can't think of anything else. This is everything I've done over and over and over again. This is 2016, 2017 and 2018 for me. (Question to self : Wtf are you doing with your life?)
+![da gif](#)
 
-Why didn't I automate this? Because I was young and dumb and full of energy. Now that I'm seeing symptoms of ageing, I figured I got to do something about this. And I did.
-
-I created a command-line tool called [recompute.py](https://github.com/suriyadeepan/recompute), which automates the process above.
-
-![](#)
-
-Pretty cool, right? I thought so. It takes care of pretty much everything. Only catch is, you follow a couple of conventions.
+You do need to follow a couple of conventions.
 
 - Data goes into `data/`
 - Any non-python file that is necessary for remote execution should be added to `.recompute/include`
 - Any python file that shouldn't be pushed to remote machine should be added to `.recompute/exclude`
 
-The configuration file is long and boring, which is a good thing apparently. 
-
-```ini
-[DEFAULT]
-default=user2@remotehost
-localuser=user1
-localpass=xxxxxxx
-defaultuser=user2
-defaulthost=remotehost
-remote_home=~/projects/
-```
-
-You can add credentials for remote machines directly into the configuration file or add them sequentially via command-line `recompute sshadd --login='user@remotehost'`.
-
-## Process
-
-The process I've described above can be completed in 3 steps with 3 commands - `init`, `async/sync`, `log`. `init` creates local configuration files, setting up the environment for executing `recompute`. Makes a list of local dependencies (python files). Populates `requirements.txt` with required pypi packages. Installs pypi packages in remote machine. Copies local dependencies to remote machine using `rsync`. A copy of local folder is created in the remote machine, under `~/projects/`.
-
-We could start execution in remote machine and wait for it to complete by using `sync` mode. Or just start remote execution and move on, using `async` mode. The command to be executed in remote machine, should be given as a string next to `sync` or `async` mode. `log` command fetches log from remote machine.
+## Setup
 
 ```bash
-recompute init  # initalize [rsync, install]
-recompute async "python3 nn1_2.py"      # start execution in remote
-# (or) recompute sync "python3 nn1.py"  # blocking run (wait for completion)
-recompute log   # after a while
+pip install --user recompute
 ```
+
+## Configuration
+
+The configuration file is super-short.
+
+```ini
+[general]
+instance = 0
+remote_home = projects/
+
+[instance 0]
+username = grenouille
+host = grasse.local
+password = hen0s3datru1h
+
+```
+
+You can add credentials for remote machines directly into the configuration file or add them sequentially via command-line `re sshadd --instance='user@remotehost'`.
+
+## Workflow
+
+My machine learning workflow follows these steps:
+
+- Copy code to remote machine `rsync`
+- Setup dependencies `pip install`
+- Download dataset and place them in `data/`
+- Execute code in remote machine
+- Get execution log
+- Copy binaries generated `bin/`
+
+wiht **re**, the tasks listed above can be accomplished with 4 commands, as below:
+
+```bash
+# re sshadd --instance='
+re init                        # initalize [rsync, install]
+re async "python3 x.py"        # start execution in remote
+# (or) re sync "python3 x.py"  # blocking run (wait for completion)
+re log                         # after a while
+re pull "bin/ ./bin/" .        # pull generated binaries
+```
+
+- `init` creates local configuration files, setting up the environment for remote execution
+  - Makes a list of local dependencies (python files)
+  - Populates `requirements.txt` with required pypi packages
+  - Installs pypi packages in remote machine
+  - Copies local dependencies to remote machine using `rsync`
+  - A copy of local folder is created in the remote machine, under `~/projects/`
+- We could start execution in remote machine and wait for it to complete by using `sync` mode or just start remote execution and move on, using `async` mode
+  - The command to be executed in remote machine, should be given as a string next to `sync` or `async` mode
+- `re log` fetches log from remote machine
+- `re pull` pulls any file from remote machine
+  - Files are addressed by their relative paths
 
 ## Logging
 
-`recompute.py` redirects the `stdout` and `stderr` of remote execution into `project-name.log`, which could be pulled to local machine by running `recompute log`. More often than not, it takes a while for execution to complete. So we start the execution in remote machine and check the log once in a while using `recompute log`. Or you could put this "once in a while" as a command-line argument and `recompute.py` pulls the log and shows you every "once in a while". It is recommended to use `logging` module to print information onto stdout, instead of `print` statements.
+**re** redirects the `stdout` and `stderr` of remote execution into `<project-name>.log`, which could be pulled to local machine by running `re log`. More often than not, it takes a while for execution to complete. So we start the execution in remote machine and check the log once in a while using `re log`. Or you could put this "once in a while" as a command-line argument and **re** pulls the log and shows you every "once in a while". It is recommended to use `logging` module to print information onto stdout, instead of `print` statements.
 
 ```bash
 # fetch log from remote machine
-recompute log
+re log
 # . start execution in remote machine
 # .. fetch log
-recompute async "python3 nn.py"
-recompute log
+re async "python3 nn.py"
+re log
 # . start execution 
 # .. pull log every 20 seconds
-recompute async "python3 nn.py"
-recompute log --loop=20
+re async "python3 nn.py"
+re log --loop=20
 ```
 
 ## rsync
 
-Files (local dependencies) can be synchronized by using `rsync` command. `rsync` is run in the background which copies files listed in `.recompute/rsyc.db` to remote machine. `--force` switch forces `recompute.py` to figure out the local dependencies and update `rsync.db`. 
+Files (local dependencies) can be synchronized by using `rsync` command. `rsync` is run in the background which copies files listed in `.recompute/rsync.db` to remote machine. `--force` switch forces **re** to figure out the local dependencies and update `rsync.db`.
 
 ```bash
-# rsync
-recompute rsync  # --force updates .recompute/rsync.db
+re rsync  # --force updates .recompute/rsync.db
 ```
 
 ## Dependencies
 
-`requirements.txt` is populated with python packages necessary for execution (uses `pipreqs` behind the scenes). `recompute install` reads `requirements.txt` and installs the packages in remote system.
+`requirements.txt` is populated with python packages necessary for execution (uses `pipreqs` behind the scenes). `re install` reads `requirements.txt` and installs the packages in remote system.
 
 ```bash
 # install dependencies
-recompute install  # --force updates requirements.txt
+re install  # --force updates requirements.txt
+# manual install
+re install "torch tqdm"
 ```
 
-## Track Processes
+## Manages Processes
 
-`recompute` keeps track of all the running processes it has spawned. We could list them out using `list` command and selectively kill processes using `kill` command. 
+**re** keeps track of all the remote processes it has spawned. We could list them out using `list` command and selectively kill processes using `kill` command.
 
 ```bash
 # list live processes
-recompute list
-#  [0] * all
-#  [1] remote_2484596 (cd ~/projects/mynn1/ && python3 nn1.py)
-#  [2] remote_1062295 (cd ~/projects/mynn2/ && python3 nn2.py)
+re list
+# +-------+--------------+-------+
+# | Index |     Name     |  PID  |
+# +-------+--------------+-------+
+# |   0   |     all      |   *   |
+# |   1   | zombie/spawn | 30601 |
+# |   2   |    runner    | 31036 |
+# +-------+--------------+-------+
 # kill process [1]
-recompute kill --idx=1
-# kill them all [0]
-recompute kill --idx=0
-# or kill interactively with just `recompute kill`
+re kill --idx=1
+# kill them all
+re purge
+# or kill interactively with just `re kill`
 ```
 
 ## Upload/Download
@@ -119,51 +149,80 @@ You might wanna download or upload a file just once without having to include it
 ```bash
 # . upload from local machine to remote
 # .. copy [current_dir/x/localfile] to [remote_home/projects/mynn1/x/]
-recompute push "x/localfile x/"
+re push "x/localfile x/"
 # . download from remote machine to local
 # .. copy [remote_home/projects/mynn1/y/remotefile] to [current_dir/y/remotefile]
-recompute pull "y/remotefile y/"
+re pull "y/remotefile y/"
 # download IRIS dataset to remote machine's [data/]
-recompute data https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data  # more urls can be added, separated by spaces
+re data https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data  # more urls can be added, separated by spaces
 ```
 
 ## Notebook
 
-Sometimes you wanna run code snippets in a notebook. `recompute notebook` starts a remote jupyter notebook server and hooks it to a local port. The remote server is tracked (`recompute list`) and could be killed whenever necessary.
+Sometimes you wanna run code snippets in a notebook. `re notebook` starts a remote jupyter notebook server and hooks it to a local port. The remote server is tracked (`re list`) and could be killed whenever necessary.
 
 ```bash
 # . start notebook server in remote machine
 # .. hook to local port
-recompute notebook  # Cntl-c to quit
-# list processes
-recompute list
-#  [0] * all
-#  [1] remote_5889010 (cd ~/projects/mynn1/ && jupyter notebook --no-browser --port=8833 --NotebookApp.token="" .)
-recompute kill --idx=1
+re notebook  # Cntl-c to quit
 ```
 
 ## Probe
 
-Sharing can be worse than hell if you are sharing something valuable with uncivilized people. This is the [Tragedy of the Commons](https://en.wikipedia.org/wiki/Tragedy_of_the_commons). Wait, it gets worse. What if you are alloted resources based on the "[quality](https://en.wikipedia.org/wiki/Quis_custodiet_ipsos_custodes%3F)" of your work? Just thinking about it gives me anxiety. Fortunately I just have to deal with the Tragedy of the Commons, where multiple remote machines exist and some are free to use. Choose the machine with the most free resources? No, we are better than that. We choose a machine that has just enough resources to get our job done. Right now, we choose this machine manually. `probe` command probes remote machines and provides us with a table of available machines and their corresponding available resources.
+`probe` command probes remote machines and provides us with a table of available machines with info on available resources.
 
 ```bash
-recompute probe
+re probe
+# +--------------------------------+--------+----------+-----------+
+# |        Machine                 | Status | GPU (MB) | Disk (MB) |
+# +--------------------------------+--------+----------+-----------+
+# | grenouille@grasse.local        | active |  10432   |     4238  |
+# | slartibartfast@magrathea.local | active |   8642   |    12012  |
+# +--------------------------------+--------+----------+-----------+
 ```
 
-**NOTE** : Insert table here
+## Manual
 
-## Issues
+`re man` gives you a detailed manual.
 
-There are a lot of them.
+|   Mode   |                   Description                       |      Options          |           Example                |
+|----------|-----------------------------------------------------|-----------------------|----------------------------------|
+| init     | Setup current directory for remote execution        | --instance-idx        |  re init                         |
+|          |                                                     |                       |  re init --instance-idx=1        |
+| rsync    | Use rsync to synchronize local files with remote    | --force               |  re rsync                        |
+| sshadd   | Add a new instance to config                        | --instance            |  re sshadd --instance="usr@host" |
+| install  | Install pypi packages in requirements.txt in remote | cmd, --force          |  re install                      |
+|          |                                                     |                       |  re install "pytorch tqdm"       |
+| sync     | Synchronous execution of "args.cmd" in remote       | cmd, --force, --rsync |  re sync "python3 x.py"          |
+| async    | Asynchronous execution of "args.cmd" in remote      | cmd, --force, --rsync |  re async "python3 x.py"         |
+| log      | Fetch log from remote machine                       | --loop, --filter      |  re log                          |
+|          |                                                     |                       |  re log --loop=2                 |
+|          |                                                     |                       |  re log --filter="pattern"       |
+| list     | List out processes alive in remote machine          | --force               |  re list                         |
+| kill     | Kill a process by index                             | --idx                 |  re kill                         |
+|          |                                                     |                       |  re kill --idx=1                 |
+| purge    | Kill all remote process that are alive              | None                  |  re purge                        |
+| ssh      | Create an ssh session in remote machine             | None                  |  re ssh                          |
+| notebook | Create jupyter notebook in remote machine           | --run-async           |  re notebook                     |
+| push     | Upload file to remote machine                       | cmd                   |  re push "x.py y/"               |
+| pull     | Download file from remote machine                   | cmd                   |  re pull "y/z.py ."              |
+| data     | Download data from web into data/ folder of remote  | cmd                   |  re data "url1 url2 url3"        |
+| man      | Show this man page                                  | None                  |  re man                          
 
-- pypi packages are installed globally in the remote machine. Creating a virtual environment for each project would be cleaner. Create a switch to toggle this behaviour, may be?
+## Contribution
 
-- Instead of installing pip packages and copying files to remote machine, we could bundle the necessary packages and files into one stand-alone package and push it to remote machine. We should be able to execute this package in remote machine, without having to worry about dependencies. May be use `cloudpickle` for this?
+All kinds of contribution are welcome.
 
-- `probe` gives us GPU memory and free disk space information. Can we use this information to find the best machine to use for execution? What's the criteria for choosing the best machine? It should fit the memory requirements of our model. Its not impossible to calculate this. But it is  too much work. May be we could get this information from the user?
+- Somethin went wrong?
+- What feature is missing?
+- What could be done better?
 
-  > " I wanna run `x.py` quickly and see the output. I don't care where you run it. Just get me the output soon. Oh, by the way, it might require 3 GB disk space and 1.5 GB GPU memory. Report back to me ASAP."
+Raise an [issue](https://github.com/suriyadeepan/recompute.py/issues).
+Add a pull request.
 
-  I almost named the tool "fixer" but changed the name after realizing it would confuse people. `fixer` sounds cool but `recompute` is more memorable. 
+## License
 
-- Is there a more "natural" way to view the running process? Is it possible to redirect the stdout/stderr of remote process to current terminal?
+Copyright (c) 2019 Suriyadeepan Ramamoorthy. All rights reserved.
+
+This work is licensed under the terms of the MIT license.  
+For a copy, see <https://opensource.org/licenses/MIT>.
