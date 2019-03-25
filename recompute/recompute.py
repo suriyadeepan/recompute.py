@@ -35,12 +35,15 @@ MAN_DOCU = """
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | Mode     | Description                                         | Options               | Example                             |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
-| init     | Setup current directory for remote execution        | --instance_idx        | $re init                            |
+| init     | Setup current directory for remote execution        | --instance-idx        | $re init                            |
 |          |                                                     |                       | $re init --instance_idx="user@host" |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | rsync    | Use rsync to synchronize local files with remote    | --force               | $re rsync                           |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
-| install  | Install pypi packages in requirements.txt in remote | cmd, --force           | $re install                         |
+| sshadd   | Add a new instance to config                        | --instance            | $re sshadd --instance_idx="usr@host"|
++----------+-----------------------------------------------------+-----------------------+-------------------------------------+
+| install  | Install pypi packages in requirements.txt in remote | cmd, --force          | $re install                         |
+|          |                                                     |                       | $re install "pytorch tqdm"          |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | sync     | Synchronous execution of "args.cmd" in remote       | cmd, --force, --rsync | $re sync "python3 x.py"             |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
@@ -59,7 +62,7 @@ MAN_DOCU = """
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | ssh      | Create an ssh session in remote machine             | None                  | $re ssh                             |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
-| notebook | Create jupyter notebook in remote machine           | --run_async           | $re notebook                        |
+| notebook | Create jupyter notebook in remote machine           | --run-async           | $re notebook                        |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | push     | Upload file to remote machine                       | cmd                   | $re push "x.py y/"                  |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
@@ -80,7 +83,7 @@ parser.add_argument('mode', type=str,
     help='(init/sync/async/rsync/install/log/list/kill/purgessh/notebook/conf/probe/data/pull/push/sshadd/man) recompute mode')
 parser.add_argument('cmd', nargs='?', default='None',
     help='command to run in remote system')
-parser.add_argument('--remote_home', nargs='?', default='/home/oni/projects/',
+parser.add_argument('--remote-home', nargs='?', default='projects/',
     help='remote projects/ directory')
 parser.add_argument('--urls', nargs='?', default='',
     help='comma-separated list of URLs')
@@ -94,14 +97,14 @@ parser.add_argument('--idx', nargs='?', default='',
     help='process idx to operate on')
 parser.add_argument('--name', nargs='?', default='runner',
     help='name of process')
-parser.add_argument('--instance_idx', nargs='?', default=0,
+parser.add_argument('--instance-idx', nargs='?', default=0,
     help='remote instance to use')
 parser.add_argument('--force', default=False, action='store_true',
     help='clear cache')
 parser.add_argument('--no-force', dest='force', action='store_false')
-parser.add_argument('--run_async', default=False, action='store_true',
+parser.add_argument('--run-async', default=False, action='store_true',
     help='Execute commands async')
-parser.add_argument('--no-run_async', dest='run_async', action='store_false')
+parser.add_argument('--no-run-async', dest='run_async', action='store_false')
 parser.add_argument('--rsync', default=True, action='store_true',
     help='Update files in remote machine')
 parser.add_argument('--no-rsync', dest='rsync', action='store_false')
