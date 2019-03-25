@@ -19,8 +19,6 @@ What is the chillest way one can train models in remote machines?
 - Abstract away boring repetitive details
 - Ease of execution
 
-![da gif](#)
-
 You do need to follow a couple of conventions.
 
 - Data goes into `data/`
