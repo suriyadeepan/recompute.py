@@ -32,6 +32,8 @@ You do need to follow a couple of conventions.
 ## Setup
 
 ```bash
+# install sshpass
+brew install http://git.io/sshpass.rb
 pip install --user recompute
 ```
 
