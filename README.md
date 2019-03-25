@@ -13,11 +13,15 @@ What is the chillest way one can train models in remote machines?
 - Don't bother choosing an instance to run on
 - No more bash scripts to copy files back and forth
 
+## Principles
+
 **re** provides a suite of features that empowers the user to focus on the experiments without having to worry about boring details listed above.
 
 - Almost zero conf
 - Abstract away boring repetitive details
 - Ease of execution
+
+## Conventions
 
 You do need to follow a couple of conventions.
 
