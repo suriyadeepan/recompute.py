@@ -40,7 +40,7 @@ MAN_DOCU = """
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | rsync    | Use rsync to synchronize local files with remote    | --force               | $re rsync                           |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
-| install  | Install pypi packages in requirements.txt in remote | --force               | $re install                         |
+| install  | Install pypi packages in requirements.txt in remote | cmd, --force           | $re install                         |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
 | sync     | Synchronous execution of "args.cmd" in remote       | cmd, --force, --rsync | $re sync "python3 x.py"             |
 +----------+-----------------------------------------------------+-----------------------+-------------------------------------+
@@ -119,19 +119,19 @@ def init():
   # create bundle
   bundle = Bundle()
   # create remote instance handle
-  void = Remote(instance, bundle, remote_home=args.remote_home)
+  remote = Remote(instance, bundle, remote_home=args.remote_home)
   # sync files
-  void.rsync()
+  remote.rsync()
   # install from requirements.txt
-  void.install_deps()
-  return void
+  remote.install_deps()
+  return remote
 
 
 def cache_exists():
   return os.path.exists(VOID_CACHE)
 
 
-def create_void():
+def get_remote():
   if cache_exists():
     logger.info('cache exists')
     return Remote()
@@ -187,81 +187,85 @@ def main():  # package entry point
     """ Mode : GET data from web """
     try:
       assert args.urls
-      create_void().download(args.urls.split(' '), run_async=args.run_async)
+      get_remote().download(args.urls.split(' '), run_async=args.run_async)
     except AssertionError:
       logger.error('Input a list of URLs to download')
 
   # ------------ init ------------ #
   elif args.mode == 'init':
     """ Mode : Initialize project in current directory """
-    init()  # create void anew
+    init()  # create remote anew
 
   # ------------ sync ------------ #
   elif args.mode == 'sync':
     """ Mode : Sync Execute command in remote machine """
     assert args.cmd  # user inputs command to exec in remote
-    # create void from cache
-    void = create_void()
+    # create remote from cache
+    remote = get_remote()
     # look for python execution
     if 'python' in args.cmd and args.rsync:  # TODO : this is pretty hacky;
-      void.rsync(update=args.force)          # you are better than this!
+      remote.rsync(update=args.force)          # you are better than this!
     # blocking execute `cmd` in remote
-    void.execute([args.cmd], log=True, name=args.name)
+    remote.execute([args.cmd], log=True, name=args.name)
 
   # ------------ async ----------- #
   elif args.mode == 'async':
     """ Mode : Async Execute command in remote machine """
     assert args.cmd
-    # get void
-    void = create_void()
+    # get remote
+    remote = get_remote()
     # look for python execution
     if 'python' in args.cmd and args.rsync:
-      void.rsync(update=args.force)
+      remote.rsync(update=args.force)
     # async execute `cmd` in remote
-    void.async_execute([args.cmd], name=args.name)
+    remote.async_execute([args.cmd], name=args.name)
 
   # ------------ rsync ----------- #
   elif args.mode == 'rsync':
     """ Mode : Rsync files """
-    # create void from cache
-    create_void().rsync(update=args.force)
+    # create remote from cache
+    get_remote().rsync(update=args.force)
 
   # ------------ install --------- #
   elif args.mode == 'install':
     """ Mode : Rsync files """
-    # create void from cache
-    create_void().install_deps(update=args.force)
+    if not args.cmd:
+      # create remote from cache
+      get_remote().install_deps(update=args.force)
+    else:
+      # space separated pypi packages
+      get_remote().install(args.cmd.split(' '))
 
   # ------------ log ------------- #
   elif args.mode == 'log':  # copy log from remote
     """ Mode : Copy log from remote machine """
-    # get void
-    void = create_void()
+    # get remote
+    remote = get_remote()
     # delete local log
     # NOTE : i'm not sure if i should do this!
-    if os.path.exists(void.local_logfile):  # if it exists
-      os.remove(void.local_logfile)
+    if os.path.exists(remote.local_logfile):  # if it exists
+      os.remove(remote.local_logfile)
     if args.loop:  # --------- loop ----------- #
       """ Mode : Copy log from remote machine in a loop """
-      void.loop_get_remote_log(int(args.loop), args.filter)
+      remote.loop_get_remote_log(int(args.loop), args.filter)
     else:  # --------------- no loop ---------- #
-      log = void.get_remote_log(args.filter)
+      log = remote.get_remote_log(args.filter)
       print(utils.parse_log(log))
 
   # ------------ list ------------ #
   elif args.mode == 'list':  # list of processes
     """ Mode : List remote processes """
     print(utils.tabulate_processes(
-        create_void().list_processes(force=True)
+        get_remote().list_processes(force=True)
         ))
 
   # ------------ kill ------------ #
   elif args.mode == 'kill':  # kill process
     """ Mode : Interactive kill """
-    void = create_void()
+    remote = get_remote()
     # print table of processes
     print(utils.tabulate_processes(
-      void.list_processes(force=True)
+      remote.list_processes(force=True)
       ))
     # resolve index of proc
     idx = int(args.idx) if args.idx else None
@@ -272,21 +276,21 @@ def main():  # package entry point
       except KeyboardInterrupt:
         exit()  # the user chikened out!
     # kill process
-    void.kill(idx)
+    remote.kill(idx)
 
   # ------------ purge ----------- #
   elif args.mode == 'purge':  # kill them all
-    create_void().kill(0)
+    get_remote().kill(0)
 
   # ------------ ssh ------------- #
   elif args.mode == 'ssh':  # start an ssh session
     """ Mode : Create an ssh session """
-    create_void().get_session()
+    get_remote().get_session()
 
   # ------------ notebook -------- #
   elif args.mode == 'notebook':  # start an ssh session
     """ Mode : Create and connect to remote notebook server """
-    create_void().start_notebook(args.run_async)
+    get_remote().start_notebook(args.run_async)
 
   # ------------ pull ------------ #
   elif args.mode == 'pull':  # copy log from remote
@@ -294,7 +298,7 @@ def main():  # package entry point
     assert args.cmd  # make sure files are provided for download
     # NOTE : relative path is used
     # NOTE : copy one file/directory at a time
-    void = create_void()
+    remote = get_remote()
 
     # parse list of files/path
     filepaths = args.cmd.split(' ')
@@ -306,11 +310,11 @@ def main():  # package entry point
       exit()
 
     # get absolute paths of local file and remote path
-    remotefile = os.path.join(void.remote_dir, filepaths[0])
+    remotefile = os.path.join(remote.remote_dir, filepaths[0])
     localpath = None if len(filepaths) == 1 \
-        else os.path.join(void.bundle.path, filepaths[1])
+        else os.path.join(remote.bundle.path, filepaths[1])
 
-    void.get_file_from_remote(remotefile, localpath)
+    remote.get_file_from_remote(remotefile, localpath)
 
   # ------------ push ------------ #
   elif args.mode == 'push':  # copy log from remote
@@ -318,7 +322,7 @@ def main():  # package entry point
     assert args.cmd  # make sure files are provided for download
     # NOTE : relative path is used
     # NOTE : copy one file/directory at a time
-    void = create_void()
+    remote = get_remote()
     # parse list of files/path
     filepaths = args.cmd.split(' ')
 
@@ -329,12 +333,12 @@ def main():  # package entry point
       exit()
 
     # get absolute paths of local file and remote path
-    localfile = os.path.join(void.bundle.path, filepaths[0])
+    localfile = os.path.join(remote.bundle.path, filepaths[0])
     remotepath = None if len(filepaths) == 1 \
-        else os.path.join(void.remote_dir, filepaths[1])
+        else os.path.join(remote.remote_dir, filepaths[1])
 
     # copy file to remote
-    void.copy_file_to_remote(localfile, remotepath)
+    remote.copy_file_to_remote(localfile, remotepath)
 
   else:
     logger.error('Something went wrong! Check command-line arguments')
