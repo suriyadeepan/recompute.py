@@ -166,7 +166,7 @@ class InstanceManager(object):
     # get instance config
     instance = self.confman.get_instance(idx)
     # make sure the instance exists in config
-    assert instance, 'Instance inactive'
+    assert instance, 'Instance inactive or absent in config'
     # return an instance
     return Instance(instance['username'], instance['password'], instance['host'])
 

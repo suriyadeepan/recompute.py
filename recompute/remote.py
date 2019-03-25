@@ -57,9 +57,8 @@ class Remote(object):
     self.client = None
 
     # projects/ folder in remote machine
-    if not remote_home:
-      remote_home = os.path.join(self.get_remote_home_dir(), 'projects/')
-    self.remote_home = remote_home
+    remote_home = remote_home if remote_home else 'projects/'
+    self.remote_home = os.path.join(self.get_remote_home_dir(), remote_home)
     # projects/project/ folder in remote machine
     self.remote_dir = os.path.join(self.remote_home, self.bundle.name)
     # projects/project/data/
