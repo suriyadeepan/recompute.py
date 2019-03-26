@@ -33,6 +33,9 @@ class ConfigManager(object):
     # read config from config file
     self.config = self.load() if self.config_exists else None
 
+    if not self.config:
+      self.generate(force=True)
+
   def load(self, configfile=None):
     """Load config dictionary from config file.
 

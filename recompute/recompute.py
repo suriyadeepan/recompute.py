@@ -107,6 +107,8 @@ parser.add_argument('--run-async', default=False, action='store_true',
 parser.add_argument('--no-run-async', dest='run_async', action='store_false')
 parser.add_argument('--rsync', default=True, action='store_true',
     help='Update files in remote machine')
+parser.add_argument('--verbose', default=False, action='store_true',
+    help='Print log while executing')
 parser.add_argument('--no-rsync', dest='rsync', action='store_false')
 args = parser.parse_args()
 

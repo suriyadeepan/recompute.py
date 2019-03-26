@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="recompute",
-    version="0.9.13",
+    version="0.9.14",
     author="Suriyadeepan Ramamoorthy",
     author_email="suriyadeepan.r@gmail.com",
     description="Remote Execution Framework",
